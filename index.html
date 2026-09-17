@@ -314,6 +314,51 @@ function scoreOf(round, pid){
   return (s && typeof s.gross === 'number') ? s : {gross:0, dots:0};
 }
 
+/* ---------- scorecard photo import ---------- */
+const PARSE_SCORECARD_URL = 'https://us-central1-golf-bet-tracker-cba58.cloudfunctions.net/parseScorecard';
+
+function fileToBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function matchRosterPlayer(name){
+  if(!name) return null;
+  const norm = String(name).trim().toLowerCase();
+  return players.find(p=>p.name.trim().toLowerCase()===norm) || null;
+}
+
+async function importScorecardPhoto(file, st){
+  st.importStatus = 'reading';
+  st.importError = null;
+  render();
+  try{
+    const base64 = await fileToBase64(file);
+    const resp = await fetch(PARSE_SCORECARD_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({imageBase64: base64, mimeType: file.type||'image/jpeg', rosterNames: players.map(p=>p.name)})
+    });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error((json && json.error && (json.error.message||json.error))||'Import failed');
+    const rows = (json.players||[]).map(p=>{
+      const matched = matchRosterPlayer(p.matchedRosterName) || matchRosterPlayer(p.writtenName);
+      const holes = Array.from({length:18}, (_,i)=> Number((p.holes||[])[i])||0);
+      return { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', holes, dots: Number(p.dots)||0 };
+    });
+    st.importReview = { rows, notes: json.notes||'' };
+    st.importStatus = null;
+  }catch(e){
+    st.importStatus = null;
+    st.importError = 'Could not read that photo — ' + (e.message||'try again.');
+  }
+  render();
+}
+
 /* ---------- views ---------- */
 function render(){
   renderTabs();
@@ -398,15 +443,95 @@ function renderRoster(app){
   app.appendChild(listCard);
 }
 
+function renderImportReview(app, st){
+  const rev = st.importReview;
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h3',{},'Review scorecard import'));
+  card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Check the player match and every hole score below, fix anything misread, then add it to the round.'));
+  if(rev.notes) card.appendChild(el('div',{class:'small-note',style:'color:var(--gold);margin-bottom:10px;'},'AI notes: '+rev.notes));
+
+  rev.rows.forEach((row, idx)=>{
+    const block = el('div',{class:'team-block'});
+    const topRow = el('div',{class:'row',style:'margin-bottom:8px;flex-wrap:wrap;gap:8px;'});
+    topRow.appendChild(el('div',{style:'font-weight:700;'}, 'Written: "'+row.writtenName+'"'));
+    const sel = el('select',{style:'width:auto;'});
+    sel.appendChild(el('option',{value:''},'— Ignore this row —'));
+    players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+      const o = el('option',{value:p.id}, p.name);
+      if(p.id===row.assignedPlayerId) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; render(); };
+    topRow.appendChild(sel);
+    block.appendChild(topRow);
+
+    const holesWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'});
+    row.holes.forEach((val, hIdx)=>{
+      const box = el('div',{style:'width:38px;text-align:center;'});
+      box.appendChild(el('div',{style:'font-size:9.5px;opacity:.55;font-weight:700;'}, String(hIdx+1)));
+      const hInput = el('input',{type:'number',inputmode:'numeric',min:'1',class:'cell-input',style:'padding:6px 2px;font-size:13px;'});
+      hInput.value = val;
+      hInput.onchange = e=>{ row.holes[hIdx] = Number(e.target.value)||0; };
+      box.appendChild(hInput);
+      holesWrap.appendChild(box);
+    });
+    block.appendChild(holesWrap);
+
+    const dotsRow = el('div',{class:'row'},[el('label',{},'Total dots')]);
+    const dInput = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'width:70px;'});
+    dInput.value = row.dots;
+    dInput.onchange = e=>{ row.dots = Number(e.target.value)||0; };
+    dotsRow.appendChild(dInput);
+    block.appendChild(dotsRow);
+
+    card.appendChild(block);
+  });
+
+  card.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
+    el('button',{class:'btn',style:'flex:1;',onclick:()=>{
+      rev.rows.forEach(row=>{
+        if(!row.assignedPlayerId) return;
+        st.selected.add(row.assignedPlayerId);
+        const gross = row.holes.reduce((a,b)=>a+b,0);
+        st.entries[row.assignedPlayerId] = { gross, dots: row.dots, holes: row.holes.slice() };
+      });
+      st.importReview = null;
+      render();
+    }},'Add to round'),
+    el('button',{class:'btn ghost',style:'flex:1;',onclick:()=>{ st.importReview = null; render(); }},'Discard')
+  ]));
+  app.appendChild(card);
+}
+
 function renderNewRound(app){
   if(players.length<2){
     app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'Add at least two players to the roster first.')));
     return;
   }
   if(!window.__newRoundState){
-    window.__newRoundState = { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null };
+    window.__newRoundState = { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null };
   }
   const st = window.__newRoundState;
+
+  const importCard = el('div',{class:'card'});
+  importCard.appendChild(el('h3',{},'Import from scorecard photo'));
+  importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores and total dots for you to review.'));
+  const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none;'});
+  const fileInput = el('input',{type:'file',accept:'image/*',style:'display:none;'});
+  const onPick = e=>{ const f = e.target.files && e.target.files[0]; e.target.value=''; if(f) importScorecardPhoto(f, st); };
+  cameraInput.onchange = onPick;
+  fileInput.onchange = onPick;
+  importCard.appendChild(cameraInput);
+  importCard.appendChild(fileInput);
+  importCard.appendChild(el('div',{style:'display:flex;gap:10px;'},[
+    el('button',{class:'btn',style:'flex:1;',disabled: st.importStatus==='reading',onclick:()=>cameraInput.click()},'Take photo'),
+    el('button',{class:'btn secondary',style:'flex:1;',disabled: st.importStatus==='reading',onclick:()=>fileInput.click()},'Choose photo')
+  ]));
+  if(st.importStatus==='reading') importCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'},'Reading scorecard…'));
+  if(st.importError) importCard.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-top:8px;'}, st.importError));
+  app.appendChild(importCard);
+
+  if(st.importReview){ renderImportReview(app, st); }
 
   const card = el('div',{class:'card'});
   card.appendChild(el('h3',{}, st.editingId ? 'Edit round' : 'Who played?'));
@@ -464,7 +589,10 @@ function renderNewRound(app){
     const roundId = st.editingId || uid();
     const roundPlayers = ids.map(pid=>({id:pid, name:(players.find(p=>p.id===pid)||{}).name||'?'}));
     const scores = {};
-    ids.forEach(pid=>{ scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0 }; });
+    ids.forEach(pid=>{
+      scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0 };
+      if(Array.isArray(st.entries[pid].holes)) scores[pid].holes = st.entries[pid].holes;
+    });
     await saveRound(roundId, { date: st.date, course: (st.course||'').trim(), playerIds: ids, roundPlayers, scores, complete:true });
     window.__newRoundState = null;
     go('round-summary', {id: roundId});
@@ -744,10 +872,19 @@ function renderRoundSummary(app){
 function editRound(round){
   window.__newRoundState = {
     selected: new Set(round.playerIds),
-    entries: Object.fromEntries(round.playerIds.map(pid=>[pid, {gross: scoreOf(round,pid).gross, dots: scoreOf(round,pid).dots}])),
+    entries: Object.fromEntries(round.playerIds.map(pid=>{
+      const s = scoreOf(round,pid);
+      const entry = {gross: s.gross, dots: s.dots};
+      if(Array.isArray(s.holes)) entry.holes = s.holes;
+      return [pid, entry];
+    })),
     date: round.date,
     course: round.course || '',
-    editingId: round.id
+    editingId: round.id,
+    error: null,
+    importStatus: null,
+    importError: null,
+    importReview: null
   };
   go('new-round');
 }
