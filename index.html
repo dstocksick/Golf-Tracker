@@ -433,7 +433,7 @@ function renderNewRound(app){
     gInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], gross: e.target.value===''?'':Number(e.target.value)}; };
     rowEl.appendChild(gInput);
 
-    const dInput = el('input',{type:'number',inputmode:'numeric',min:'0',placeholder:'0',class:'cell-input'});
+    const dInput = el('input',{type:'number',inputmode:'numeric',min:'0',placeholder:'–',class:'cell-input'});
     dInput.value = entry.dots===undefined ? '' : entry.dots;
     dInput.disabled = !st.selected.has(p.id);
     dInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], dots: e.target.value===''?0:Number(e.target.value)}; };
