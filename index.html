@@ -128,6 +128,8 @@ table.results td{padding:6px 0;border-top:1px solid var(--line);}
 :root:not([data-theme="light"]) .badge.complete{color:var(--paper)}
 .link-btn{background:none;border:none;color:var(--sky);font-weight:600;cursor:pointer;font-size:13px;padding:4px 0;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <header class="top">
@@ -143,6 +145,14 @@ table.results td{padding:6px 0;border-top:1px solid var(--line);}
 
 <script>
 /* ---------- state ---------- */
+const firebaseConfig = {
+  apiKey: "AIzaSyC1y2xdbl6GPq3nNhufw0H9t699hDNPDk0",
+  authDomain: "golf-bet-tracker-cba58.firebaseapp.com",
+  projectId: "golf-bet-tracker-cba58",
+  storageBucket: "golf-bet-tracker-cba58.firebasestorage.app",
+  messagingSenderId: "121614929120",
+  appId: "1:121614929120:web:6091ed1ea8fb52c9885485"
+};
 let db = null;
 let players = [];   // {id,name}
 let rounds = [];    // {id, date, playerIds, roundPlayers:[{id,name}], scores:{pid:{gross,dots}}, complete}
@@ -153,7 +163,10 @@ function setStatus(msg){ document.getElementById('statusLine').textContent = msg
 
 /* ---------- db bootstrap ---------- */
 async function init(){
-  try{ db = await claude.use('db'); }catch(e){ db = null; }
+  try{
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.firestore();
+  }catch(e){ db = null; }
   if(!db){ setStatus('Storage unavailable — changes won\'t be saved.'); }
   else { setStatus('Synced'); subscribe(); }
   render();

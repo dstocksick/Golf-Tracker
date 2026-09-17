@@ -2,25 +2,34 @@
 
 A single-file web app for tracking a golf group's per-round bets. Built as a
 Claude Artifact (published at https://claude.ai/artifact/4KEgXTtfqqLBPG1ZeodusC)
-and iterated on in a chat conversation — this brief plus `golf-bet-tracker.html`
-is everything from that conversation, so you don't need the chat history.
+and iterated on in a chat conversation — this brief plus `index.html`
+(originally `golf-bet-tracker.html`, renamed for GitHub Pages) is everything
+from that conversation, so you don't need the chat history.
 
 ## Important: how storage currently works
 
-The app currently persists data (players, rounds) through Claude's `db`
-capability — a `window.storage`-like API (`claude.use('db')`, then
-`db.collection(...).doc(...).set/get/onSnapshot/delete`) that **only works
-when this exact file is published/hosted as a Claude Artifact on claude.ai.**
+The app persists data (players, rounds) in **Firebase Firestore**, loaded via
+the compat SDK from Google's CDN (`firebase-app-compat.js` +
+`firebase-firestore-compat.js`, no build step / npm needed). The
+`firebaseConfig` object and `db = firebase.firestore()` are set up at the top
+of the `<script>` block in `index.html`. The Firestore API
+(`db.collection(...).doc(...).set/get/onSnapshot/delete`) is close enough to
+the old Claude Artifact `db` capability that `subscribe()`, `savePlayer`,
+`deletePlayerDoc`, `saveRound`, `deleteRoundDoc` needed no changes beyond the
+bootstrap.
 
-If you deploy this file anywhere else (GitHub Pages, your own server, etc.)
-as-is, `claude.use('db')` will fail and there will be no persistence. Two
-options going forward:
-1. Keep it hosted as a Claude Artifact (this repo is then just source control
-   / backup — you'd still copy updated files back to claude.ai to publish).
-2. Replace the storage layer with a real backend (e.g. Firebase, Supabase, a
-   small self-hosted API) if you want this to run independently of Claude's
-   artifact hosting. This would mean rewriting `subscribe()`, `savePlayer`,
-   `deletePlayerDoc`, `saveRound`, `deleteRoundDoc` in the `<script>` block.
+Firestore security rules are currently open (`allow read, write: if true;`)
+so that friends can use the app without a login — anyone with the Firestore
+project's client config (which is embedded in the public HTML/JS, same as
+any client-side Firebase app) can read/write. This is acceptable for a
+casual friend-group app behind an unguessable URL, but do not put sensitive
+data in it. The Firebase project is `golf-bet-tracker-cba58` (Spark/free
+tier).
+
+The app is hosted as a static site via **GitHub Pages** from this repo, so
+it runs independently of claude.ai — no more copying files back to claude.ai
+to publish. Just commit and push; Pages picks up changes automatically
+(may take a minute or two).
 
 ## Feature summary (what's built)
 
@@ -77,12 +86,11 @@ Fraunces (serif, headings) + Inter (body) from Google Fonts, light/dark mode
 via `prefers-color-scheme` and `data-theme`. See the `<style>` block in the
 HTML file for the full token set.
 
-## Suggested first steps in Claude Code
+## Repo / hosting status
 
-1. `git init`, add `golf-bet-tracker.html` and this brief, initial commit.
-2. Decide on the storage question above (stay on Claude Artifact hosting vs.
-   migrate to a real backend) before making further changes — it affects how
-   much of the `<script>` block is safe to touch.
-3. If staying on Artifact hosting: after each change, the file still needs to
-   be re-published as a Claude Artifact (via claude.ai) to actually go live;
-   Claude Code editing the local file alone won't update the hosted version.
+- Source of truth: private GitHub repo `dstocksick/Golf-Tracker`.
+- Live site: GitHub Pages, served from this repo (see repo Settings → Pages
+  for the exact URL). Commit + push to `main`/`master` to deploy.
+- To let friends use it, add them as GitHub collaborators if they need repo
+  access, and just share the Pages URL for using the app itself (no GitHub
+  or Claude account needed to use the app, since storage is open Firestore).
