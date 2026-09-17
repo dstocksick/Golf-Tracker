@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Fairway Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sand:#EDE6D0;
+  --sand-2:#E2D8B8;
+  --fairway:#2F4C39;
+  --fairway-2:#233A2B;
+  --ink:#1C2119;
+  --gold:#B8901F;
+  --sky:#3E6E8E;
+  --paper:#F7F4E9;
+  --line:rgba(28,33,25,0.14);
+  --card:#FFFFFF;
+  --danger:#9C3B33;
+  --radius-sm:6px;
+  --radius-md:10px;
+  --shadow:0 1px 2px rgba(28,33,25,0.08), 0 4px 14px rgba(28,33,25,0.06);
+}
+:root:not([data-theme="light"]) {
+  @media (prefers-color-scheme: dark) {
+    --sand:#20241D; --sand-2:#2A2F22; --fairway:#8FBE9F; --fairway-2:#B7DCC3;
+    --ink:#EDEBDF; --gold:#E3B94A; --sky:#7FB3D5; --paper:#181B14;
+    --line:rgba(237,235,223,0.14); --card:#20241D; --danger:#E08479;
+    --shadow:0 1px 2px rgba(0,0,0,0.3), 0 4px 14px rgba(0,0,0,0.25);
+  }
+}
+:root[data-theme="dark"]{
+  --sand:#20241D; --sand-2:#2A2F22; --fairway:#8FBE9F; --fairway-2:#B7DCC3;
+  --ink:#EDEBDF; --gold:#E3B94A; --sky:#7FB3D5; --paper:#181B14;
+  --line:rgba(237,235,223,0.14); --card:#20241D; --danger:#E08479;
+  --shadow:0 1px 2px rgba(0,0,0,0.3), 0 4px 14px rgba(0,0,0,0.25);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,.display{
+  font-family:'Fraunces',Georgia,serif;
+  font-weight:600;
+  letter-spacing:-0.01em;
+  color:var(--fairway);
+}
+a{color:inherit;}
+button{font-family:inherit;}
+.wrap{max-width:720px;margin:0 auto;padding:0 16px 96px;overflow-x:hidden;}
+header.top{
+  background:var(--fairway);
+  color:var(--sand);
+  padding:22px 16px 18px;
+  position:sticky; top:0; z-index:20;
+}
+header.top .inner{max-width:720px;margin:0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:12px;}
+header.top h1{color:#fff;margin:0;font-size:22px;}
+:root:not([data-theme="light"]) header.top h1{color:var(--sand)}
+header.top .sub{font-size:12.5px;opacity:.75;}
+nav.tabs{
+  display:flex; gap:2px; max-width:720px;margin:0 auto; padding:0 16px;
+  background:var(--fairway-2);
+  overflow-x:auto;
+}
+:root:not([data-theme="light"]) nav.tabs{background:var(--sand-2)}
+nav.tabs button{
+  background:none;border:none;color:inherit;opacity:.65;
+  padding:10px 12px; font-size:13.5px; font-weight:600; cursor:pointer;
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+nav.tabs button.active{opacity:1;border-bottom-color:var(--gold);}
+main{padding-top:18px;}
+.card{
+  background:var(--card); border-radius:var(--radius-md); box-shadow:var(--shadow);
+  padding:16px; margin-bottom:14px; border:1px solid var(--line);
+}
+.row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+.muted{opacity:.62; font-size:13px;}
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  background:var(--fairway); color:#fff; border:none; border-radius:var(--radius-sm);
+  padding:10px 16px; font-size:14.5px; font-weight:600; cursor:pointer;
+}
+:root:not([data-theme="light"]) .btn{color:var(--paper)}
+.btn.secondary{background:transparent;color:var(--fairway);border:1.5px solid var(--fairway);}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);}
+.btn.danger{background:var(--danger);color:#fff;}
+.btn.small{padding:6px 10px;font-size:13px;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+input[type=text],input[type=number],input[type=date],select{
+  font-family:inherit; font-size:15px; padding:9px 10px; border-radius:var(--radius-sm);
+  border:1.5px solid var(--line); background:var(--card); color:var(--ink); width:100%;
+}
+.field{margin-bottom:12px;}
+.field label{display:block; font-size:12.5px; font-weight:600; opacity:.7; margin-bottom:4px;}
+.player-line{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);}
+.player-line:last-child{border-bottom:none;}
+.empty{text-align:center;padding:40px 10px;opacity:.6;font-size:14.5px;}
+.team-block{border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;border:1.5px solid var(--line);}
+.team-block h4{margin:0 0 6px;font-size:13px;text-transform:none;color:var(--sky);}
+.entry-row{display:grid; grid-template-columns:1fr 66px 66px; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+.entry-row:last-child{border-bottom:none;}
+.entry-row .pname{font-weight:600;font-size:14px;}
+.entry-row .colhead{font-size:9.5px;text-align:center;opacity:.55;font-weight:700;}
+.cell-input{text-align:center;padding:8px 4px;font-size:15px;font-weight:600;}
+table.results{width:100%;border-collapse:collapse;font-size:14px;}
+table.results th{text-align:left;font-size:11.5px;opacity:.6;font-weight:700;padding-bottom:6px;}
+table.results td{padding:6px 0;border-top:1px solid var(--line);}
+.money-pos{color:var(--fairway);font-weight:700;}
+.money-neg{color:var(--danger);font-weight:700;}
+.settlement-list{margin:6px 0 14px;padding-left:0;list-style:none;}
+.settlement-list li{padding:5px 0;font-size:14px;border-bottom:1px dashed var(--line);}
+.settlement-list li:last-child{border-bottom:none;}
+.round-item{cursor:pointer;}
+.round-item:hover{background:var(--sand-2);}
+.small-note{font-size:12px;opacity:.55;margin-top:4px;}
+.badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--sand-2);}
+.badge.complete{background:var(--fairway);color:#fff;}
+:root:not([data-theme="light"]) .badge.complete{color:var(--paper)}
+.link-btn{background:none;border:none;color:var(--sky);font-weight:600;cursor:pointer;font-size:13px;padding:4px 0;}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="inner">
+    <div>
+      <h1>Fairway Ledger</h1>
+      <div class="sub" id="statusLine">Loading…</div>
+    </div>
+  </div>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<div class="wrap"><main id="app"></main></div>
+
+<script>
+/* ---------- state ---------- */
+let db = null;
+let players = [];   // {id,name}
+let rounds = [];    // {id, date, playerIds, roundPlayers:[{id,name}], scores:{pid:{gross,dots}}, complete}
+let route = { view: 'roster', params: {} };
+
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+function setStatus(msg){ document.getElementById('statusLine').textContent = msg; }
+
+/* ---------- db bootstrap ---------- */
+async function init(){
+  try{ db = await claude.use('db'); }catch(e){ db = null; }
+  if(!db){ setStatus('Storage unavailable — changes won\'t be saved.'); }
+  else { setStatus('Synced'); subscribe(); }
+  render();
+}
+
+function subscribe(){
+  db.collection('players').onSnapshot(snap=>{
+    players = (snap.docs||[]).filter(d=>d.exists).map(d=>({id:d.id, ...d.data()}));
+    render();
+  }, ()=> setStatus('Sync error — reload to retry'));
+  db.collection('rounds').onSnapshot(snap=>{
+    rounds = (snap.docs||[]).filter(d=>d.exists).map(d=>({id:d.id, ...d.data()}));
+    rounds.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    render();
+  }, ()=> setStatus('Sync error — reload to retry'));
+}
+
+async function savePlayer(id, data){ if(!db) return; try{ await db.collection('players').doc(id).set(data); }catch(e){ setStatus('Could not save — try again'); } }
+async function deletePlayerDoc(id){ if(!db) return; try{ await db.collection('players').doc(id).delete(); }catch(e){ setStatus('Could not remove — try again'); } }
+async function saveRound(id, data){ if(!db) return; try{ await db.collection('rounds').doc(id).set(data); }catch(e){ setStatus('Could not save — try again'); } }
+async function deleteRoundDoc(id){ if(!db) return; try{ await db.collection('rounds').doc(id).delete(); }catch(e){ setStatus('Could not remove — try again'); } }
+
+/* ---------- routing ---------- */
+function go(view, params={}){ route = {view, params}; renderTabs(); render(); window.scrollTo(0,0); }
+
+function renderTabs(){
+  const tabs = [['roster','Roster'],['new-round','New Round'],['teams','Teams'],['history','History'],['player-history','Player History']];
+  const elWrap = document.getElementById('tabs');
+  elWrap.innerHTML = '';
+  tabs.forEach(([id,label])=>{
+    const b = document.createElement('button');
+    b.textContent = label;
+    const group = (id==='history') ? ['history','round-summary'] : [id];
+    if(group.includes(route.view)) b.classList.add('active');
+    b.onclick = ()=> go(id);
+    elWrap.appendChild(b);
+  });
+}
+
+/* ---------- stats ---------- */
+function playerAvg(pid){
+  // rounds is already sorted newest-first by date; weight recent rounds more heavily
+  // (0.6 decay per round back) so a hot or cold streak shows up faster than a flat average.
+  const done = rounds.filter(r=>r.complete && r.scores && r.scores[pid] && r.scores[pid].gross);
+  if(!done.length) return null;
+  const decay = 0.6;
+  let weightedSum=0, weightTotal=0;
+  done.forEach((r,i)=>{
+    const w = Math.pow(decay, i);
+    weightedSum += Number(r.scores[pid].gross)*w;
+    weightTotal += w;
+  });
+  return weightedSum/weightTotal;
+}
+
+function suggestTeams(playerIds, numTeams){
+  const n = playerIds.length;
+  const withAvg = playerIds.map(pid=>({pid, avg: playerAvg(pid)}));
+  const known = withAvg.filter(p=>p.avg!==null).map(p=>p.avg);
+  const fallback = known.length ? known.reduce((a,b)=>a+b,0)/known.length : 90;
+  withAvg.forEach(p=>{ if(p.avg===null) p.avg = fallback; });
+  withAvg.sort((a,b)=> a.avg - b.avg);
+  const avgOf = pid => (withAvg.find(w=>w.pid===pid)||{}).avg;
+
+  // Keep team sizes as equal as possible (differ by at most 1).
+  const base = Math.floor(n/numTeams), rem = n%numTeams;
+  const sizes = Array.from({length:numTeams}, (_,i)=> base + (i<rem?1:0));
+
+  // Seed with a snake fill (low->high, high->low, ...) across the size-capped teams —
+  // a good starting point for balanced sums.
+  const teams = Array.from({length:numTeams}, ()=>({members:[], sum:0}));
+  let idx = 0, dir = 1;
+  const nextOpenSlot = ()=>{
+    let guard = 0;
+    while(teams[idx].members.length >= sizes[idx]){
+      idx += dir;
+      if(idx>=numTeams){ idx=numTeams-1; dir=-1; }
+      if(idx<0){ idx=0; dir=1; }
+      if(++guard>numTeams*2) break;
+    }
+  };
+  withAvg.forEach(p=>{
+    nextOpenSlot();
+    teams[idx].members.push(p.pid);
+    teams[idx].sum += p.avg;
+    idx += dir;
+    if(idx>=numTeams){ idx=numTeams-1; dir=-1; }
+    if(idx<0){ idx=0; dir=1; }
+  });
+
+  // Local search: repeatedly swap one player between two teams (same sizes preserved)
+  // whenever it tightens the gap between the highest and lowest team average.
+  const teamAvg = t => t.sum / t.members.length;
+  const spread = ()=>{ const avgs = teams.map(teamAvg); return Math.max(...avgs)-Math.min(...avgs); };
+  let improved = true, iterations = 0;
+  while(improved && iterations < 500){
+    improved = false; iterations++;
+    for(let i=0;i<numTeams && !improved;i++){
+      for(let j=i+1;j<numTeams && !improved;j++){
+        for(let a=0;a<teams[i].members.length && !improved;a++){
+          for(let b=0;b<teams[j].members.length && !improved;b++){
+            const pidA = teams[i].members[a], pidB = teams[j].members[b];
+            const dA = avgOf(pidA), dB = avgOf(pidB);
+            const before = spread();
+            teams[i].members[a]=pidB; teams[j].members[b]=pidA;
+            teams[i].sum += (dB-dA); teams[j].sum += (dA-dB);
+            if(spread() < before - 1e-9){ improved = true; }
+            else{ teams[i].members[a]=pidA; teams[j].members[b]=pidB; teams[i].sum -= (dB-dA); teams[j].sum -= (dA-dB); }
+          }
+        }
+      }
+    }
+  }
+  return teams;
+}
+
+function computeDots(round){
+  const totals = {};
+  round.playerIds.forEach(pid=>{ totals[pid] = Number((round.scores[pid]||{}).dots)||0; });
+  const settlements = [];
+  const ids = round.playerIds;
+  for(let i=0;i<ids.length;i++){
+    for(let j=i+1;j<ids.length;j++){
+      const a=ids[i], b=ids[j];
+      const diff = totals[a]-totals[b];
+      if(diff===0) continue;
+      const amount = Math.abs(diff)*0.25;
+      if(diff>0) settlements.push({owes:b, owed:a, amount});
+      else settlements.push({owes:a, owed:b, amount});
+    }
+  }
+  return {totals, settlements};
+}
+
+function nameOf(round, pid){
+  const rp = (round.roundPlayers||[]).find(p=>p.id===pid);
+  if(rp) return rp.name;
+  const p = players.find(p=>p.id===pid);
+  return p ? p.name : 'Unknown';
+}
+function fmt$(n){ return (n<0?'-$':'$') + Math.abs(n).toFixed(2); }
+function scoreOf(round, pid){
+  const s = round.scores && round.scores[pid];
+  return (s && typeof s.gross === 'number') ? s : {gross:0, dots:0};
+}
+
+/* ---------- views ---------- */
+function render(){
+  renderTabs();
+  const app = document.getElementById('app');
+  app.innerHTML = '';
+  try{
+    if(route.view==='roster') return renderRoster(app);
+    if(route.view==='new-round') return renderNewRound(app);
+    if(route.view==='teams') return renderTeams(app);
+    if(route.view==='history') return renderHistory(app);
+    if(route.view==='player-history') return renderPlayerHistory(app);
+    if(route.view==='round-summary') return renderRoundSummary(app);
+    renderRoster(app);
+  }catch(err){
+    app.innerHTML = '';
+    app.appendChild(el('div',{class:'card'},[
+      el('div',{style:'font-weight:700;margin-bottom:6px;'},'Something went wrong displaying this page.'),
+      el('button',{class:'btn secondary',onclick:()=>go('roster')},'Back to Roster')
+    ]));
+  }
+}
+
+function el(tag, attrs={}, children=[]){
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k,v])=>{
+    if(k==='html') e.innerHTML = v;
+    else if(k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if(k==='class') e.className = v;
+    else e.setAttribute(k,v);
+  });
+  (Array.isArray(children)?children:[children]).forEach(c=>{ if(c) e.appendChild(typeof c==='string'?document.createTextNode(c):c); });
+  return e;
+}
+
+// Native confirm()/alert() don't reliably fire inside a published artifact's sandboxed
+// frame, so destructive actions use this two-step inline confirm instead.
+function confirmAction(key, label, onConfirm){
+  if(!window.__pendingConfirm) window.__pendingConfirm = new Set();
+  const pending = window.__pendingConfirm;
+  if(pending.has(key)){
+    return el('span',{style:'display:inline-flex;gap:10px;align-items:center;'},[
+      el('span',{style:'font-size:12.5px;color:var(--danger);font-weight:700;'}, 'Delete?'),
+      el('button',{class:'link-btn',style:'color:var(--danger);',onclick:async(e)=>{ e.stopPropagation(); pending.delete(key); await onConfirm(); }},'Yes'),
+      el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); pending.delete(key); render(); }},'Cancel')
+    ]);
+  }
+  return el('button',{class:'link-btn',style:'color:var(--danger);',onclick:(e)=>{ e.stopPropagation(); pending.add(key); render(); }}, label);
+}
+
+function renderRoster(app){
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h3',{},'Add a player'));
+  const inp = el('input',{type:'text',id:'newPlayerName',placeholder:'Player name'});
+  const form = el('div',{class:'row',style:'gap:8px;'},[
+    inp,
+    el('button',{class:'btn',onclick:async()=>{
+      const name = inp.value.trim();
+      if(!name) return;
+      await savePlayer(uid(), {name});
+      inp.value='';
+    }},'Add')
+  ]);
+  card.appendChild(form);
+  app.appendChild(card);
+
+  const listCard = el('div',{class:'card'});
+  listCard.appendChild(el('h3',{},'Roster'));
+  if(!players.length){
+    listCard.appendChild(el('div',{class:'empty'},'No players yet. Add your group above.'));
+  } else {
+    players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+      const avg = playerAvg(p.id);
+      listCard.appendChild(el('div',{class:'player-line'},[
+        el('div',{},[
+          el('div',{style:'font-weight:600;'},p.name),
+          el('div',{class:'muted'}, avg!==null ? `Avg ${avg.toFixed(1)}` : 'No rounds yet')
+        ]),
+        confirmAction('player:'+p.id, 'Remove', ()=>deletePlayerDoc(p.id))
+      ]));
+    });
+  }
+  app.appendChild(listCard);
+}
+
+function renderNewRound(app){
+  if(players.length<2){
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'Add at least two players to the roster first.')));
+    return;
+  }
+  if(!window.__newRoundState){
+    window.__newRoundState = { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null };
+  }
+  const st = window.__newRoundState;
+
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h3',{}, st.editingId ? 'Edit round' : 'Who played?'));
+  card.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Check a player in, then enter their final 18-hole gross score and total dots earned.'));
+
+  const header = el('div',{class:'entry-row',style:'font-weight:700;border-bottom:1.5px solid var(--line);'},[
+    el('div',{},'Player'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
+  ]);
+  card.appendChild(header);
+
+  players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+    const rowEl = el('div',{class:'entry-row'});
+    const label = el('label',{style:'display:flex;align-items:center;gap:8px;cursor:pointer;'});
+    const cb = el('input',{type:'checkbox',style:'width:auto;'});
+    cb.checked = st.selected.has(p.id);
+    cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); render(); };
+    label.appendChild(cb);
+    label.appendChild(el('span',{class:'pname'},p.name));
+    rowEl.appendChild(label);
+
+    const entry = st.entries[p.id] || {};
+    const gInput = el('input',{type:'number',inputmode:'numeric',min:'1',placeholder:'–',class:'cell-input'});
+    gInput.value = entry.gross===undefined ? '' : entry.gross;
+    gInput.disabled = !st.selected.has(p.id);
+    gInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], gross: e.target.value===''?'':Number(e.target.value)}; };
+    rowEl.appendChild(gInput);
+
+    const dInput = el('input',{type:'number',inputmode:'numeric',min:'0',placeholder:'0',class:'cell-input'});
+    dInput.value = entry.dots===undefined ? '' : entry.dots;
+    dInput.disabled = !st.selected.has(p.id);
+    dInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], dots: e.target.value===''?0:Number(e.target.value)}; };
+    rowEl.appendChild(dInput);
+
+    card.appendChild(rowEl);
+  });
+  app.appendChild(card);
+
+  const dateCard = el('div',{class:'card'});
+  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach'});
+  courseInput.value = st.course || '';
+  courseInput.oninput = e=> st.course = e.target.value;
+  dateCard.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput]));
+  const dateInput = el('input',{type:'date'});
+  dateInput.value = st.date;
+  dateInput.onchange = e=> st.date = e.target.value;
+  dateCard.appendChild(el('div',{class:'field',style:'margin-bottom:0;'},[el('label',{},'Round date'), dateInput]));
+  app.appendChild(dateCard);
+
+  const saveBtn = el('button',{class:'btn',style:'width:100%;',onclick:async()=>{
+    const ids = [...st.selected];
+    st.error = null;
+    if(ids.length<2){ st.error = 'Check in at least two players.'; render(); return; }
+    const missing = ids.filter(pid => st.entries[pid]===undefined || st.entries[pid].gross===undefined || st.entries[pid].gross==='');
+    if(missing.length){ st.error = 'Enter a gross score for every checked-in player.'; render(); return; }
+    const roundId = st.editingId || uid();
+    const roundPlayers = ids.map(pid=>({id:pid, name:(players.find(p=>p.id===pid)||{}).name||'?'}));
+    const scores = {};
+    ids.forEach(pid=>{ scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0 }; });
+    await saveRound(roundId, { date: st.date, course: (st.course||'').trim(), playerIds: ids, roundPlayers, scores, complete:true });
+    window.__newRoundState = null;
+    go('round-summary', {id: roundId});
+  }}, st.editingId ? 'Save changes' : 'Save round');
+  if(st.error) app.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-bottom:8px;text-align:center;'}, st.error));
+  app.appendChild(saveBtn);
+}
+
+function renderTeams(app){
+  if(players.length<2){
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'Add at least two players to the roster first.')));
+    return;
+  }
+  if(!window.__teamsState){
+    window.__teamsState = { selected:new Set(), numTeams:2, assignment:null };
+  }
+  const st = window.__teamsState;
+
+  const pickCard = el('div',{class:'card'});
+  pickCard.appendChild(el('h3',{},'Who\'s playing next?'));
+  players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
+    const avg = playerAvg(p.id);
+    const line = el('label',{class:'player-line',style:'cursor:pointer;'});
+    const cb = el('input',{type:'checkbox'});
+    cb.checked = st.selected.has(p.id);
+    cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); st.assignment=null; render(); };
+    line.appendChild(el('div',{style:'display:flex;align-items:center;gap:10px;'},[cb, el('span',{},p.name)]));
+    line.appendChild(el('span',{class:'muted'}, avg!==null?`avg ${avg.toFixed(1)}`:'—'));
+    pickCard.appendChild(line);
+  });
+  app.appendChild(pickCard);
+
+  const ctrlCard = el('div',{class:'card'});
+  ctrlCard.appendChild(el('h3',{},'Teams'));
+  ctrlCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Balances by average gross score, weighted toward recent rounds. Drag isn\'t supported — use the dropdown next to a player to move them after suggesting.'));
+  const controlRow = el('div',{class:'row'},[
+    el('div',{class:'field',style:'flex:1;margin-bottom:0;'},[
+      el('label',{},'Number of teams'),
+      (()=>{ const sel = el('select',{}); [2,3].forEach(n=>{ const o=el('option',{value:n},String(n)); if(n===st.numTeams) o.selected=true; sel.appendChild(o); }); sel.onchange=e=>{ st.numTeams=Number(e.target.value); st.assignment=null; render(); }; return sel; })()
+    ]),
+    el('button',{class:'btn',style:'margin-top:18px;',onclick:()=>{
+      const ids = [...st.selected];
+      if(ids.length<2){ st.pickError='Check in at least two players.'; render(); return; }
+      st.pickError=null;
+      const teamsArr = suggestTeams(ids, st.numTeams);
+      const assignment = {};
+      teamsArr.forEach((t,idx)=> t.members.forEach(pid=> assignment[pid]=idx));
+      st.assignment = assignment;
+      render();
+    }},'Suggest teams')
+  ]);
+  ctrlCard.appendChild(controlRow);
+  if(st.pickError) ctrlCard.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;'}, st.pickError));
+  app.appendChild(ctrlCard);
+
+  if(st.assignment){
+    const ids = [...st.selected];
+    const groups = Array.from({length:st.numTeams}, ()=>[]);
+    ids.forEach(pid=>{
+      const idx = st.assignment[pid];
+      if(idx!==undefined && idx>=0 && idx<st.numTeams) groups[idx].push(pid);
+      else groups[0].push(pid);
+    });
+    const resultsCard = el('div',{class:'card'});
+    groups.forEach((members, idx)=>{
+      const avgs = members.map(pid=>playerAvg(pid)).filter(a=>a!==null);
+      const teamAvg = avgs.length ? avgs.reduce((a,b)=>a+b,0)/avgs.length : null;
+      const block = el('div',{class:'team-block'});
+      block.appendChild(el('div',{class:'row',style:'margin-bottom:2px;'},[
+        el('h4',{style:'margin:0;'},`Team ${idx+1}`),
+        el('span',{class:'muted',style:'font-weight:700;'}, teamAvg!==null ? `avg ${teamAvg.toFixed(1)}` : '—')
+      ]));
+      members.slice().sort((a,b)=>{
+        const avgA = playerAvg(a), avgB = playerAvg(b);
+        if(avgA===null && avgB===null) return 0;
+        if(avgA===null) return 1;
+        if(avgB===null) return -1;
+        return avgA-avgB;
+      }).forEach(pid=>{
+        const p = players.find(pp=>pp.id===pid);
+        const avg = playerAvg(pid);
+        const rowEl = el('div',{class:'row',style:'padding:3px 0;'},[
+          el('span',{}, p?p.name:'?'),
+          el('div',{style:'display:flex;align-items:center;gap:8px;'},[
+            el('span',{class:'muted'}, avg!==null?avg.toFixed(1):'—'),
+            (()=>{
+              const sel = el('select',{style:'width:auto;padding:4px 6px;font-size:12px;'});
+              for(let i=0;i<st.numTeams;i++){ const o=el('option',{value:i}, `T${i+1}`); if(i===idx) o.selected=true; sel.appendChild(o); }
+              sel.onchange = e=>{ st.assignment[pid]=Number(e.target.value); render(); };
+              return sel;
+            })()
+          ])
+        ]);
+        block.appendChild(rowEl);
+      });
+      resultsCard.appendChild(block);
+    });
+    app.appendChild(resultsCard);
+  }
+}
+
+function renderHistory(app){
+  app.appendChild(el('h3',{style:'margin-bottom:8px;'},'Round History'));
+  if(!rounds.length){
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'No rounds yet — start one from the New Round tab.')));
+    return;
+  }
+  if(!window.__historyExpanded) window.__historyExpanded = new Set();
+  const expanded = window.__historyExpanded;
+  rounds.forEach(r=>{
+    try{
+      const isOpen = expanded.has(r.id);
+      const card = el('div',{class:'card'});
+      const titleLine = r.course ? `${r.date} — ${r.course}` : r.date;
+      const headerRow = el('div',{class:'row round-item',onclick:()=>{ if(isOpen) expanded.delete(r.id); else expanded.add(r.id); render(); }},[
+        el('div',{},[
+          el('div',{style:'font-weight:700;'}, titleLine),
+          el('div',{class:'muted'}, `${(r.playerIds||[]).length} players`)
+        ]),
+        el('span',{class:'muted'}, isOpen ? '▲' : '▼')
+      ]);
+      card.appendChild(headerRow);
+      if(isOpen){
+        const table = el('table',{class:'results',style:'margin-top:10px;'});
+        table.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Gross'), el('th',{},'Dots')]));
+        (r.playerIds||[]).slice().sort((a,b)=>(scoreOf(r,a).gross)-(scoreOf(r,b).gross)).forEach(pid=>{
+          table.appendChild(el('tr',{},[el('td',{},nameOf(r,pid)), el('td',{},String(scoreOf(r,pid).gross)), el('td',{},String(scoreOf(r,pid).dots))]));
+        });
+        card.appendChild(table);
+        card.appendChild(el('div',{style:'margin-top:12px;display:flex;gap:16px;'},[
+          el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); go('round-summary',{id:r.id}); }},'View payouts & teams'),
+          el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); editRound(r); }},'Edit'),
+          confirmAction('round:'+r.id, 'Delete', async()=>{ expanded.delete(r.id); await deleteRoundDoc(r.id); })
+        ]));
+      }
+      app.appendChild(card);
+    }catch(err){
+      app.appendChild(el('div',{class:'card'},[
+        el('div',{style:'font-weight:700;'}, r.date || 'Round'),
+        el('div',{class:'muted'},'This round has incomplete data and couldn\'t be displayed.'),
+        confirmAction('round:'+r.id, 'Delete', async()=>{ await deleteRoundDoc(r.id); })
+      ]));
+    }
+  });
+}
+
+function renderPlayerHistory(app){
+  if(!rounds.length || !players.length){
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'No rounds yet — start one from the New Round tab.')));
+    return;
+  }
+  const chronological = rounds.slice().sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  const pCard = el('div',{class:'card'});
+  const scrollWrap = el('div',{style:'overflow-x:auto;'});
+  const ptable = el('table',{class:'results',style:'white-space:nowrap;'});
+  const headRow = el('tr',{},[el('th',{},'Player')]);
+  chronological.forEach(r=> headRow.appendChild(el('th',{}, r.course ? r.course : r.date)));
+  headRow.appendChild(el('th',{},'Total'));
+  headRow.appendChild(el('th',{},'Average'));
+  ptable.appendChild(headRow);
+  const withTotals = players.map(p=>{
+    let sum=0, count=0;
+    chronological.forEach(r=>{
+      const sc = r.scores && r.scores[p.id];
+      if(sc && typeof sc.gross==='number'){ sum+=sc.gross; count++; }
+    });
+    return {p, sum, count};
+  });
+  withTotals.sort((a,b)=>{
+    if(a.count===0 && b.count===0) return a.p.name.localeCompare(b.p.name);
+    if(a.count===0) return 1;
+    if(b.count===0) return -1;
+    return a.sum-b.sum;
+  });
+  withTotals.forEach(({p,sum,count})=>{
+    const tr = el('tr',{},[el('td',{style:'font-weight:600;'}, p.name)]);
+    chronological.forEach(r=>{
+      const sc = r.scores && r.scores[p.id];
+      tr.appendChild(el('td',{}, sc ? String(sc.gross) : '—'));
+    });
+    tr.appendChild(el('td',{style:'font-weight:700;'}, count ? String(sum) : '—'));
+    tr.appendChild(el('td',{style:'font-weight:700;'}, count ? (sum/count).toFixed(1) : '—'));
+    ptable.appendChild(tr);
+  });
+  scrollWrap.appendChild(ptable);
+  pCard.appendChild(scrollWrap);
+  app.appendChild(pCard);
+}
+
+function renderRoundSummary(app){
+  const round = rounds.find(r=>r.id===route.params.id);
+  if(!round){ app.appendChild(el('div',{class:'card'},'Round not found.')); return; }
+  const dots = computeDots(round);
+
+  const head = el('div',{class:'card'});
+  head.appendChild(el('div',{class:'row'},[
+    el('h3',{style:'margin:0;'}, round.course ? `${round.date} — ${round.course}` : round.date),
+    el('button',{class:'btn ghost small',onclick:()=>editRound(round)},'Edit scores')
+  ]));
+  const scoreTable = el('table',{class:'results'});
+  scoreTable.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Gross'), el('th',{},'Dots')]));
+  round.playerIds.slice().sort((a,b)=> (scoreOf(round,a).gross)-(scoreOf(round,b).gross)).forEach(pid=>{
+    scoreTable.appendChild(el('tr',{},[el('td',{},nameOf(round,pid)), el('td',{},String(scoreOf(round,pid).gross)), el('td',{},String(scoreOf(round,pid).dots))]));
+  });
+  head.appendChild(scoreTable);
+  app.appendChild(head);
+
+  const dotsCard = el('div',{class:'card'});
+  dotsCard.appendChild(el('h3',{},'Dot payouts'));
+  const ordered = round.playerIds.slice().sort((a,b)=>dots.totals[b]-dots.totals[a]);
+  ordered.forEach(pid=>{
+    dotsCard.appendChild(el('div',{style:'margin-top:10px;'},[
+      el('div',{style:'font-weight:700;'}, `${nameOf(round,pid)} — ${dots.totals[pid]} dots`)
+    ]));
+    const mine = dots.settlements.filter(s=>s.owes===pid || s.owed===pid)
+      .slice()
+      .sort((a,b)=>{
+        const otherA = a.owes===pid ? a.owed : a.owes;
+        const otherB = b.owes===pid ? b.owed : b.owes;
+        return dots.totals[otherB]-dots.totals[otherA];
+      });
+    if(!mine.length){
+      dotsCard.appendChild(el('div',{class:'muted',style:'padding:4px 0;'},'Even with everyone.'));
+    } else {
+      const ul = el('ul',{class:'settlement-list'});
+      mine.forEach(s=>{
+        if(s.owes===pid) ul.appendChild(el('li',{},[document.createTextNode('Owes '), el('span',{class:'money-neg'},fmt$(s.amount)), document.createTextNode(' to '+nameOf(round,s.owed))]));
+        else ul.appendChild(el('li',{},[document.createTextNode('Owed '), el('span',{class:'money-pos'},fmt$(s.amount)), document.createTextNode(' by '+nameOf(round,s.owes))]));
+      });
+      dotsCard.appendChild(ul);
+    }
+  });
+  app.appendChild(dotsCard);
+
+  const teamsCard = el('div',{class:'card'});
+  teamsCard.appendChild(el('h3',{},'Next round teams'));
+  teamsCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Balances players by average gross score, weighted toward their most recent rounds.'));
+  if(!window.__nextTeamsState) window.__nextTeamsState = {numTeams:2, teams:null};
+  const nts = window.__nextTeamsState;
+  const controlRow = el('div',{class:'row'},[
+    el('div',{class:'field',style:'flex:1;margin-bottom:0;'},[
+      el('label',{},'Number of teams'),
+      (()=>{ const sel = el('select',{}); [2,3].forEach(n=>{ const o=el('option',{value:n},String(n)); if(n===nts.numTeams) o.selected=true; sel.appendChild(o); }); sel.onchange=e=>{ nts.numTeams=Number(e.target.value); nts.teams=null; render(); }; return sel; })()
+    ]),
+    el('button',{class:'btn',style:'margin-top:18px;',onclick:()=>{ nts.teams = suggestTeams(round.playerIds, nts.numTeams); render(); }},'Suggest teams')
+  ]);
+  teamsCard.appendChild(controlRow);
+  if(nts.teams){
+    nts.teams.forEach((t,idx)=>{
+      const block = el('div',{class:'team-block'});
+      const teamAvg = t.sum / t.members.length;
+      block.appendChild(el('div',{class:'row',style:'margin-bottom:2px;'},[
+        el('h4',{style:'margin:0;'},`Team ${idx+1}`),
+        el('span',{class:'muted',style:'font-weight:700;'}, `avg ${teamAvg.toFixed(1)}`)
+      ]));
+      t.members.forEach(pid=>{
+        const avg = playerAvg(pid);
+        block.appendChild(el('div',{class:'row',style:'padding:3px 0;'},[el('span',{},nameOf(round,pid)), el('span',{class:'muted'}, avg!==null?avg.toFixed(1):'—')]));
+      });
+      teamsCard.appendChild(block);
+    });
+  }
+  app.appendChild(teamsCard);
+
+  if(!window.__pendingConfirm) window.__pendingConfirm = new Set();
+  const delKey = 'round:'+round.id;
+  if(window.__pendingConfirm.has(delKey)){
+    app.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
+      el('button',{class:'btn danger',style:'flex:1;',onclick:async()=>{ window.__pendingConfirm.delete(delKey); await deleteRoundDoc(round.id); go('history'); }},'Yes, delete permanently'),
+      el('button',{class:'btn ghost',style:'flex:1;',onclick:()=>{ window.__pendingConfirm.delete(delKey); render(); }},'Cancel')
+    ]));
+  } else {
+    app.appendChild(el('button',{class:'btn danger',style:'width:100%;margin-top:6px;',onclick:()=>{ window.__pendingConfirm.add(delKey); render(); }},'Delete round'));
+  }
+}
+
+function editRound(round){
+  window.__newRoundState = {
+    selected: new Set(round.playerIds),
+    entries: Object.fromEntries(round.playerIds.map(pid=>[pid, {gross: scoreOf(round,pid).gross, dots: scoreOf(round,pid).dots}])),
+    date: round.date,
+    course: round.course || '',
+    editingId: round.id
+  };
+  go('new-round');
+}
+
+init();
+</script>
+</body>
+</html>
