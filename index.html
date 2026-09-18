@@ -396,12 +396,12 @@ function el(tag, attrs={}, children=[]){
 
 // Native confirm()/alert() don't reliably fire inside a published artifact's sandboxed
 // frame, so destructive actions use this two-step inline confirm instead.
-function confirmAction(key, label, onConfirm){
+function confirmAction(key, label, onConfirm, confirmText){
   if(!window.__pendingConfirm) window.__pendingConfirm = new Set();
   const pending = window.__pendingConfirm;
   if(pending.has(key)){
     return el('span',{style:'display:inline-flex;gap:10px;align-items:center;'},[
-      el('span',{style:'font-size:12.5px;color:var(--danger);font-weight:700;'}, 'Delete?'),
+      el('span',{style:'font-size:12.5px;color:var(--danger);font-weight:700;'}, confirmText||'Delete?'),
       el('button',{class:'link-btn',style:'color:var(--danger);',onclick:async(e)=>{ e.stopPropagation(); pending.delete(key); await onConfirm(); }},'Yes'),
       el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); pending.delete(key); render(); }},'Cancel')
     ]);
@@ -514,18 +514,25 @@ function renderImportReview(app, st){
   app.appendChild(card);
 }
 
+function blankNewRoundState(){
+  return { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null };
+}
+
 function renderNewRound(app){
   if(players.length<2){
     app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'Add at least two players to the roster first.')));
     return;
   }
   if(!window.__newRoundState){
-    window.__newRoundState = { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null };
+    window.__newRoundState = blankNewRoundState();
   }
   const st = window.__newRoundState;
 
   const importCard = el('div',{class:'card'});
-  importCard.appendChild(el('h3',{},'Import from scorecard photo'));
+  importCard.appendChild(el('div',{class:'row'},[
+    el('h3',{style:'margin:0;'},'Import from scorecard photo'),
+    confirmAction('reset-new-round', 'Clear round', ()=>{ window.__newRoundState = blankNewRoundState(); render(); }, 'Clear?')
+  ]));
   importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores for you to review. Enter dots manually below afterward.'));
   const hiddenInputStyle = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
   const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:hiddenInputStyle});
