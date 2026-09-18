@@ -109,6 +109,8 @@ input[type=text],input[type=number],input[type=date],select{
 .team-block{border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;border:1.5px solid var(--line);}
 .team-block h4{margin:0 0 6px;font-size:13px;text-transform:none;color:var(--sky);}
 .entry-row{display:grid; grid-template-columns:44px minmax(0,1fr) 54px 54px 58px; gap:5px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+details.card>summary{cursor:pointer;font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18px;color:var(--fairway);padding:2px 0;}
+details.card[open]>summary{margin-bottom:10px;}
 .team-select{padding:8px 0;font-size:14px;font-weight:600;text-align:center;text-align-last:center;}
 .entry-row:last-child{border-bottom:none;}
 .entry-row .pname{font-weight:600;font-size:14px;}
@@ -678,12 +680,60 @@ function computeTeamResults(round){
   return {status:'ok', teams, tiedHoles, noTeam};
 }
 
+function computeBets(round, res){
+  const BUY_IN = 5, REFUND = 2, GREENIE_PER_PLAYER = 0.25;
+  const r2 = x=> Math.round((x + 1e-9) * 100) / 100;
+  const ids = round.playerIds||[];
+  const n = ids.length;
+  const greenieValue = GREENIE_PER_PLAYER * n;
+  const pot = BUY_IN * n;
+
+  const lowest = Math.min(...res.teams.map(t=>t.total));
+  const leaders = res.teams.filter(t=>t.total===lowest);
+  const winner = leaders.length===1 ? leaders[0] : null;
+  const refundTotal = winner ? winner.players.length * REFUND : 0;
+  const greenieOf = pid => Number(round.scores[pid].greenies)||0;
+  const greenieCount = ids.reduce((s,pid)=>s+greenieOf(pid),0);
+  const greenieTotal = greenieCount * greenieValue;
+  const remaining = pot - refundTotal - greenieTotal;
+  const totalSkins = res.teams.reduce((s,t)=>s+t.skins.length,0);
+  const skinValue = totalSkins ? remaining / totalSkins : 0;
+
+  const rows = ids.map(pid=>{
+    const team = res.teams.find(t=>t.players.includes(pid));
+    const refund = winner && team===winner ? REFUND : 0;
+    const greenie = r2(greenieOf(pid) * greenieValue);
+    let skins = 0;
+    if(totalSkins){ if(team) skins = r2(skinValue * team.skins.length / team.players.length); }
+    else skins = r2(remaining / n);
+    const payout = r2(refund + greenie + skins);
+    return { pid, team: team ? team.num : null, refund, greenie, skins, payout, net: r2(payout - BUY_IN) };
+  }).sort((a,b)=> (a.team||99)-(b.team||99) || nameOf(round,a.pid).localeCompare(nameOf(round,b.pid)));
+
+  const sum = k => r2(rows.reduce((s,r)=>s+r[k],0));
+  const totals = { refund: sum('refund'), greenie: sum('greenie'), skins: sum('skins'), payout: sum('payout'), net: sum('net') };
+  const $ = x => '$' + x.toFixed(2);
+  const steps = [
+    `Pot: ${n} players × $${BUY_IN} = ${$(pot)}`,
+    winner
+      ? `Winning team refund: Team ${winner.num} (${winner.players.length} members × $${REFUND}) = ${$(refundTotal)}`
+      : 'Team score tied: no refund paid',
+    `Greenies: ${greenieCount} × ${$(greenieValue)} ($0.25 × ${n} players) = ${$(greenieTotal)}`,
+    `Remaining for skins: ${$(remaining)}`,
+    totalSkins
+      ? `Skin value: ${$(remaining)} ÷ ${totalSkins} skins = ${$(skinValue)} (${res.teams.map(t=>`Team ${t.num}: ${t.skins.length}`).join(', ')})`
+      : `No skins earned: ${$(remaining)} split evenly among all ${n} players`
+  ];
+  const roundingNote = Math.abs(totals.payout - pot) > 0.005 ? `Payouts differ from the pot by ${$(Math.abs(totals.payout - pot))} due to rounding to the cent.` : '';
+  return { rows, sum: totals, steps, roundingNote };
+}
+
 function renderTeamResults(app){
   if(!rounds.length){
     app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'No rounds yet — start one from the New Round tab.')));
     return;
   }
-  if(!window.__teamResultsState) window.__teamResultsState = {roundId:null};
+  if(!window.__teamResultsState) window.__teamResultsState = {roundId:null, open:{bets:true, holes:false}};
   const st = window.__teamResultsState;
   const round = rounds.find(r=>r.id===st.roundId) || rounds[0];
 
@@ -735,8 +785,38 @@ function renderTeamResults(app){
   if(res.noTeam.length) scoreCard.appendChild(el('div',{class:'small-note'}, 'Not on a team: ' + res.noTeam.map(pid=>nameOf(round,pid)).join(', ') + '.'));
   app.appendChild(scoreCard);
 
-  const holeCard = el('div',{class:'card'});
-  holeCard.appendChild(el('h3',{},'Hole by hole'));
+  const collapsible = (title, key, children)=>{
+    const d = el('details',{class:'card'});
+    d.open = !!st.open[key];
+    d.addEventListener('toggle', ()=>{ st.open[key] = d.open; });
+    d.appendChild(el('summary',{}, title));
+    children.forEach(c=>d.appendChild(c));
+    return d;
+  };
+
+  const bets = computeBets(round, res);
+  const money = n=> n.toFixed(2);
+  const signed = n=> (n<0 ? '−' : '+') + Math.abs(n).toFixed(2);
+  const cell = (txt, style)=> el('td',{style:'padding:6px 2px;white-space:nowrap;' + (style||'')}, txt);
+  const head = txt=> el('th',{style:'padding:0 2px 6px;white-space:nowrap;font-size:11px;'}, txt);
+  const calc = el('div',{style:'font-size:13.5px;line-height:1.6;margin-bottom:10px;'});
+  bets.steps.forEach(s=> calc.appendChild(el('div',{}, s)));
+  const bTable = el('table',{class:'results',style:'font-size:13px;'});
+  bTable.appendChild(el('tr',{},[head('Player'), head('Team'), head('Refund'), head('Greenies'), head('Skins'), head('Payout'), head('Net')]));
+  bets.rows.forEach(r=>{
+    bTable.appendChild(el('tr',{},[
+      cell(nameOf(round,r.pid), 'font-weight:600;'), cell(r.team ? 'T'+r.team : '–'), cell(money(r.refund)), cell(money(r.greenie)), cell(money(r.skins)),
+      cell(money(r.payout), 'font-weight:700;'),
+      el('td',{class: r.net<0 ? 'money-neg' : 'money-pos', style:'padding:6px 2px;white-space:nowrap;'}, signed(r.net))
+    ]));
+  });
+  bTable.appendChild(el('tr',{style:'font-weight:700;'},[cell('Total'), cell(''), cell(money(bets.sum.refund)), cell(money(bets.sum.greenie)), cell(money(bets.sum.skins)), cell(money(bets.sum.payout)), cell(signed(bets.sum.net))]));
+  const bWrap = el('div',{style:'overflow-x:auto;'}, bTable);
+  const betKids = [calc, bWrap, el('div',{class:'small-note',style:'margin-top:6px;'},'Amounts in dollars. Net = payout minus the $5 buy-in.')];
+  if(bets.roundingNote) betKids.push(el('div',{class:'small-note',style:'margin-top:8px;'}, bets.roundingNote));
+  app.appendChild(collapsible('Betting payouts', 'bets', betKids));
+
+  const holeCard = el('div',{});
   holeCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Lowest score on each team per hole. A filled score means that team won the hole (a skin).'));
   const wrap = el('div',{style:'overflow-x:auto;'});
   const hTable = el('table',{class:'results'});
@@ -759,7 +839,7 @@ function renderTeamResults(app){
   hTable.appendChild(totalsRow('TOTAL','total'));
   wrap.appendChild(hTable);
   holeCard.appendChild(wrap);
-  app.appendChild(holeCard);
+  app.appendChild(collapsible('Hole by hole', 'holes', [holeCard]));
 }
 
 function renderTeams(app){
