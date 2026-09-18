@@ -948,21 +948,42 @@ function renderHistory(app){
       const isOpen = expanded.has(r.id);
       const card = el('div',{class:'card'});
       const titleLine = r.course ? `${r.date} — ${r.course}` : r.date;
+      const hasTeams = (r.playerIds||[]).some(pid=>scoreOf(r,pid).team);
+      const tr = hasTeams ? computeTeamResults(r) : null;
+      let winnerNum = null, resultText = '', shortResult = '';
+      if(tr && tr.status==='ok'){
+        const byTotal = tr.teams.slice().sort((a,b)=>a.total-b.total);
+        const leaders = byTotal.filter(t=>t.total===byTotal[0].total);
+        const scoreText = byTotal.map(t=>t.total).join('–');
+        if(leaders.length===1){
+          winnerNum = leaders[0].num;
+          resultText = `Winning team: Team ${winnerNum} (${scoreText})`;
+          shortResult = `Team ${winnerNum} won`;
+        } else {
+          resultText = `Team score tied (${scoreText})`;
+          shortResult = 'Team score tied';
+        }
+      } else if(tr){
+        resultText = 'Team winner needs hole by hole scores for every team member.';
+      }
       const headerRow = el('div',{class:'row round-item',onclick:()=>{ if(isOpen) expanded.delete(r.id); else expanded.add(r.id); render(); }},[
         el('div',{},[
           el('div',{style:'font-weight:700;'}, titleLine),
-          el('div',{class:'muted'}, `${(r.playerIds||[]).length} players`)
+          el('div',{class:'muted'}, `${(r.playerIds||[]).length} players` + (shortResult ? ` · ${shortResult}` : ''))
         ]),
         el('span',{class:'muted'}, isOpen ? '▲' : '▼')
       ]);
       card.appendChild(headerRow);
       if(isOpen){
         const table = el('table',{class:'results',style:'margin-top:10px;'});
-        table.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Gross'), el('th',{},'Dots')]));
+        table.appendChild(el('tr',{},[el('th',{},'Player'), ...(hasTeams ? [el('th',{},'Team')] : []), el('th',{},'Gross'), el('th',{},'Dots')]));
         (r.playerIds||[]).slice().sort((a,b)=>(scoreOf(r,a).gross)-(scoreOf(r,b).gross)).forEach(pid=>{
-          table.appendChild(el('tr',{},[el('td',{},nameOf(r,pid)), el('td',{},String(scoreOf(r,pid).gross)), el('td',{},String(scoreOf(r,pid).dots))]));
+          const t = scoreOf(r,pid).team;
+          const teamCell = el('td',{},[t ? 'Team '+t : '–', (t && t===winnerNum) ? el('span',{class:'badge complete',style:'margin-left:6px;'},'Winner') : null]);
+          table.appendChild(el('tr',{},[el('td',{},nameOf(r,pid)), ...(hasTeams ? [teamCell] : []), el('td',{},String(scoreOf(r,pid).gross)), el('td',{},String(scoreOf(r,pid).dots))]));
         });
         card.appendChild(table);
+        if(resultText) card.appendChild(el('div',{style:'margin-top:8px;font-weight:600;font-size:14px;'}, resultText));
         card.appendChild(el('div',{style:'margin-top:12px;display:flex;gap:16px;'},[
           el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); go('round-summary',{id:r.id}); }},'View payouts & teams'),
           el('button',{class:'link-btn',onclick:(e)=>{ e.stopPropagation(); editRound(r); }},'Edit'),
