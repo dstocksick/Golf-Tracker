@@ -1089,36 +1089,6 @@ function renderRoundSummary(app){
   });
   app.appendChild(dotsCard);
 
-  const teamsCard = el('div',{class:'card'});
-  teamsCard.appendChild(el('h3',{},'Next round teams'));
-  teamsCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Balances players by average gross score, weighted toward their most recent rounds.'));
-  if(!window.__nextTeamsState) window.__nextTeamsState = {numTeams:2, teams:null};
-  const nts = window.__nextTeamsState;
-  const controlRow = el('div',{class:'row'},[
-    el('div',{class:'field',style:'flex:1;margin-bottom:0;'},[
-      el('label',{},'Number of teams'),
-      (()=>{ const sel = el('select',{}); [2,3].forEach(n=>{ const o=el('option',{value:n},String(n)); if(n===nts.numTeams) o.selected=true; sel.appendChild(o); }); sel.onchange=e=>{ nts.numTeams=Number(e.target.value); nts.teams=null; render(); }; return sel; })()
-    ]),
-    el('button',{class:'btn',style:'margin-top:18px;',onclick:()=>{ nts.teams = suggestTeams(round.playerIds, nts.numTeams); render(); }},'Suggest teams')
-  ]);
-  teamsCard.appendChild(controlRow);
-  if(nts.teams){
-    nts.teams.forEach((t,idx)=>{
-      const block = el('div',{class:'team-block'});
-      const teamAvg = t.sum / t.members.length;
-      block.appendChild(el('div',{class:'row',style:'margin-bottom:2px;'},[
-        el('h4',{style:'margin:0;'},`Team ${idx+1}`),
-        el('span',{class:'muted',style:'font-weight:700;'}, `avg ${teamAvg.toFixed(1)}`)
-      ]));
-      t.members.forEach(pid=>{
-        const avg = playerAvg(pid);
-        block.appendChild(el('div',{class:'row',style:'padding:3px 0;'},[el('span',{},nameOf(round,pid)), el('span',{class:'muted'}, avg!==null?avg.toFixed(1):'—')]));
-      });
-      teamsCard.appendChild(block);
-    });
-  }
-  app.appendChild(teamsCard);
-
   if(!window.__pendingConfirm) window.__pendingConfirm = new Set();
   const delKey = 'round:'+round.id;
   if(window.__pendingConfirm.has(delKey)){
