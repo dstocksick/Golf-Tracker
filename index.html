@@ -516,8 +516,9 @@ function renderNewRound(app){
   const importCard = el('div',{class:'card'});
   importCard.appendChild(el('h3',{},'Import from scorecard photo'));
   importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores and total dots for you to review.'));
-  const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:'display:none;'});
-  const fileInput = el('input',{type:'file',accept:'image/*',style:'display:none;'});
+  const hiddenInputStyle = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:hiddenInputStyle});
+  const fileInput = el('input',{type:'file',accept:'image/*',style:hiddenInputStyle});
   const onPick = e=>{ const f = e.target.files && e.target.files[0]; e.target.value=''; if(f) importScorecardPhoto(f, st); };
   cameraInput.onchange = onPick;
   fileInput.onchange = onPick;
