@@ -30,15 +30,17 @@ const RESPONSE_SCHEMA = {
 };
 
 function buildPrompt(rosterNames) {
-  return `You are reading a photo of a handwritten golf scorecard. Each row on the card is one player; each column is one of 18 holes, showing that player's gross strokes for that hole. There is also, somewhere on the card, a total "dots" count per player (a single number per player, not per hole) — dots may be written as a separate column, tally marks, or noted elsewhere near the player's name/row.
+  return `You are reading a photo of a handwritten golf scorecard. Each row on the card is one player; each column is one of 18 holes, showing that player's gross strokes for that hole.
+
+Dots: on this card, a "dot" won on a hole is marked as a small dot/period written directly above (or immediately beside) that hole's score number — it is NOT a separate written total. Some hole scores will have no dot, some will have one, and occasionally a hole could have more than one dot mark. To get a player's total dots, carefully look at every one of their 18 hole cells for these small marks and count them up across all 18 holes.
 
 For each player row, return:
 - writtenName: the name exactly as handwritten on the card (best-effort transcription).
 - matchedRosterName: if the written name clearly matches one of these known roster names, return that exact roster name; otherwise null. Known roster names: ${rosterNames.length ? rosterNames.join(", ") : "(none provided)"}.
-- holes: an array of exactly 18 integers, the gross strokes for holes 1 through 18 in order. If a value is illegible or missing, use 0 for that hole and mention it in notes.
-- dots: the player's total dot count as a single integer (0 if none written/visible).
+- holes: an array of exactly 18 integers, the gross strokes for holes 1 through 18 in order (the number itself, not counting any dot mark above it). If a value is illegible or missing, use 0 for that hole and mention it in notes.
+- dots: the player's total dot count for the round, computed by counting the small dot marks above their 18 hole scores as described above (0 if none visible).
 
-Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check.
+Take care to distinguish the gross-score digit from the small dot mark above it — they are two different pieces of information in the same cell. Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check.
 
 Respond with JSON matching the given schema only.`;
 }
