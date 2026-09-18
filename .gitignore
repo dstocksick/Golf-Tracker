@@ -4,4 +4,4 @@ node_modules/
 scorecard*.jpeg
 scorecard*.jpg
 scorecard*.png
-scorecard-test-data.json
+scorecard-test-data*.json
