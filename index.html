@@ -348,7 +348,7 @@ async function importScorecardPhoto(file, st){
     const rows = (json.players||[]).map(p=>{
       const matched = matchRosterPlayer(p.matchedRosterName) || matchRosterPlayer(p.writtenName);
       const holes = Array.from({length:18}, (_,i)=> Number((p.holes||[])[i])||0);
-      return { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', holes, dots: Number(p.dots)||0 };
+      return { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', holes };
     });
     st.importReview = { rows, notes: json.notes||'' };
     st.importStatus = null;
@@ -472,18 +472,24 @@ function renderImportReview(app, st){
       box.appendChild(el('div',{style:'font-size:9.5px;opacity:.55;font-weight:700;'}, String(hIdx+1)));
       const hInput = el('input',{type:'number',inputmode:'numeric',min:'1',class:'cell-input',style:'padding:6px 2px;font-size:13px;'});
       hInput.value = val;
-      hInput.onchange = e=>{ row.holes[hIdx] = Number(e.target.value)||0; };
+      hInput.onchange = e=>{ row.holes[hIdx] = Number(e.target.value)||0; updateTotals(); };
       box.appendChild(hInput);
       holesWrap.appendChild(box);
     });
     block.appendChild(holesWrap);
 
-    const dotsRow = el('div',{class:'row'},[el('label',{},'Total dots')]);
-    const dInput = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'width:70px;'});
-    dInput.value = row.dots;
-    dInput.onchange = e=>{ row.dots = Number(e.target.value)||0; };
-    dotsRow.appendChild(dInput);
-    block.appendChild(dotsRow);
+    const frontSpan = el('span',{});
+    const totalSpan = el('span',{});
+    const updateTotals = ()=>{
+      frontSpan.textContent = String(row.holes.slice(0,9).reduce((a,b)=>a+b,0));
+      totalSpan.textContent = String(row.holes.reduce((a,b)=>a+b,0));
+    };
+    updateTotals();
+    const totalsRow = el('div',{class:'row',style:'font-weight:700;'},[
+      el('span',{},['Front 9: ', frontSpan]),
+      el('span',{},['Total (18): ', totalSpan])
+    ]);
+    block.appendChild(totalsRow);
 
     card.appendChild(block);
   });
@@ -494,7 +500,7 @@ function renderImportReview(app, st){
         if(!row.assignedPlayerId) return;
         st.selected.add(row.assignedPlayerId);
         const gross = row.holes.reduce((a,b)=>a+b,0);
-        st.entries[row.assignedPlayerId] = { gross, dots: row.dots, holes: row.holes.slice() };
+        st.entries[row.assignedPlayerId] = { ...st.entries[row.assignedPlayerId], gross, holes: row.holes.slice() };
       });
       st.importReview = null;
       render();
@@ -516,7 +522,7 @@ function renderNewRound(app){
 
   const importCard = el('div',{class:'card'});
   importCard.appendChild(el('h3',{},'Import from scorecard photo'));
-  importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores and total dots for you to review.'));
+  importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores for you to review. Enter dots manually below afterward.'));
   const hiddenInputStyle = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
   const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:hiddenInputStyle});
   const fileInput = el('input',{type:'file',accept:'image/*',style:hiddenInputStyle});
