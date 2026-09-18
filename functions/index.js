@@ -32,7 +32,14 @@ const RESPONSE_SCHEMA = {
 function buildPrompt(rosterNames) {
   return `You are reading a photo of a handwritten golf scorecard. Each row on the card is one player; each column is one of 18 holes, showing that player's gross strokes for that hole.
 
-Dots: on this card, a "dot" won on a hole is marked as a small dot/period written directly above (or immediately beside) that hole's score number — it is NOT a separate written total. Some hole scores will have no dot, some will have one, and occasionally a hole could have more than one dot mark. To get a player's total dots, carefully look at every one of their 18 hole cells for these small marks and count them up across all 18 holes.
+Work column-by-column, not just row-by-row, to avoid drift:
+1. First locate the printed hole-number header row (1 through 18) and note the horizontal position of each hole's column.
+2. For each player row, read each hole's value by lining it up with that same hole's column position from the header — do not just read left-to-right and assume even spacing, since handwritten digits are not always evenly spaced or perfectly aligned under their column. If a row looks shifted relative to the header, re-check which column each digit actually falls under before recording it.
+3. After reading all 18 holes for a player, sanity-check that you have exactly 18 values and that none were skipped or double-counted into the wrong column.
+
+Digit accuracy: handwritten digits are easy to confuse — pay close attention to pairs that commonly get mixed up, especially 4 vs 7 (a 4 has a closed or crossed vertical stroke; a 7 has a single diagonal stroke with no vertical crossbar), as well as 3 vs 8, 1 vs 7, and 0 vs 6. When genuinely uncertain between two digits for a cell, pick your best guess but mention the ambiguity in notes.
+
+Dots: on this card, a "dot" won on a hole is marked as a small dot/period written directly above (or immediately beside) that hole's score number — it is NOT a separate written total. Some hole scores will have no dot, some will have one, and occasionally a hole could have more than one dot mark. To get a player's total dots, carefully look at every one of their 18 hole cells for these small marks and count them up across all 18 holes. Take care to distinguish the gross-score digit from the small dot mark above it — they are two different pieces of information in the same cell.
 
 For each player row, return:
 - writtenName: the name exactly as handwritten on the card (best-effort transcription).
@@ -40,7 +47,7 @@ For each player row, return:
 - holes: an array of exactly 18 integers, the gross strokes for holes 1 through 18 in order (the number itself, not counting any dot mark above it). If a value is illegible or missing, use 0 for that hole and mention it in notes.
 - dots: the player's total dot count for the round, computed by counting the small dot marks above their 18 hole scores as described above (0 if none visible).
 
-Take care to distinguish the gross-score digit from the small dot mark above it — they are two different pieces of information in the same cell. Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check.
+Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check — including any hole where you had to choose between two similar-looking digits, or any row where column alignment was unclear.
 
 Respond with JSON matching the given schema only.`;
 }
