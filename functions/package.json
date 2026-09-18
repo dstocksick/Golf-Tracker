@@ -1,12 +1,12 @@
 {
   "name": "functions",
-  "description": "Cloud Functions for Fairway Ledger",
+  "description": "Cloud Functions for The 2026 Lake Open (Settle up Golf)",
   "engines": {
-    "node": "20"
+    "node": "22"
   },
   "main": "index.js",
   "dependencies": {
-    "firebase-functions": "^6.0.1"
+    "firebase-functions": "^7.4.0"
   },
   "private": true
 }
