@@ -108,7 +108,7 @@ input[type=text],input[type=number],input[type=date],select{
 .empty{text-align:center;padding:40px 10px;opacity:.6;font-size:14.5px;}
 .team-block{border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;border:1.5px solid var(--line);}
 .team-block h4{margin:0 0 6px;font-size:13px;text-transform:none;color:var(--sky);}
-.entry-row{display:grid; grid-template-columns:1fr 54px 62px 62px; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+.entry-row{display:grid; grid-template-columns:54px 1fr 62px 62px; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
 .team-select{padding:8px 0;font-size:14px;font-weight:600;text-align:center;text-align-last:center;}
 .entry-row:last-child{border-bottom:none;}
 .entry-row .pname{font-weight:600;font-size:14px;}
@@ -555,6 +555,17 @@ function renderNewRound(app){
   if(st.importError) importCard.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-top:8px;'}, st.importError));
   app.appendChild(importCard);
 
+  const dateCard = el('div',{class:'card'});
+  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach'});
+  courseInput.value = st.course || '';
+  courseInput.oninput = e=> st.course = e.target.value;
+  dateCard.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput]));
+  const dateInput = el('input',{type:'date'});
+  dateInput.value = st.date;
+  dateInput.onchange = e=> st.date = e.target.value;
+  dateCard.appendChild(el('div',{class:'field',style:'margin-bottom:0;'},[el('label',{},'Round date'), dateInput]));
+  app.appendChild(dateCard);
+
   if(st.importReview){ renderImportReview(app, st); }
 
   const card = el('div',{class:'card'});
@@ -562,20 +573,12 @@ function renderNewRound(app){
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Check a player in, then enter their final 18-hole gross score and total dots earned.'));
 
   const header = el('div',{class:'entry-row',style:'font-weight:700;border-bottom:1.5px solid var(--line);'},[
-    el('div',{},'Player'), el('div',{class:'colhead'},'TEAM'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
+    el('div',{class:'colhead'},'TEAM'), el('div',{},'Player'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
   ]);
   card.appendChild(header);
 
   players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
     const rowEl = el('div',{class:'entry-row'});
-    const label = el('label',{style:'display:flex;align-items:center;gap:8px;cursor:pointer;'});
-    const cb = el('input',{type:'checkbox',style:'width:auto;'});
-    cb.checked = st.selected.has(p.id);
-    cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); render(); };
-    label.appendChild(cb);
-    label.appendChild(el('span',{class:'pname'},p.name));
-    rowEl.appendChild(label);
-
     const entry = st.entries[p.id] || {};
     const teamSel = el('select',{class:'team-select'});
     teamSel.appendChild(el('option',{value:''},'–'));
@@ -583,6 +586,14 @@ function renderNewRound(app){
     teamSel.disabled = !st.selected.has(p.id);
     teamSel.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], team: e.target.value===''?undefined:Number(e.target.value)}; };
     rowEl.appendChild(teamSel);
+
+    const label = el('label',{style:'display:flex;align-items:center;gap:8px;cursor:pointer;'});
+    const cb = el('input',{type:'checkbox',style:'width:auto;'});
+    cb.checked = st.selected.has(p.id);
+    cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); render(); };
+    label.appendChild(cb);
+    label.appendChild(el('span',{class:'pname'},p.name));
+    rowEl.appendChild(label);
 
     const gInput = el('input',{type:'number',inputmode:'numeric',min:'1',placeholder:'–',class:'cell-input'});
     gInput.value = entry.gross===undefined ? '' : entry.gross;
@@ -599,17 +610,6 @@ function renderNewRound(app){
     card.appendChild(rowEl);
   });
   app.appendChild(card);
-
-  const dateCard = el('div',{class:'card'});
-  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach'});
-  courseInput.value = st.course || '';
-  courseInput.oninput = e=> st.course = e.target.value;
-  dateCard.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput]));
-  const dateInput = el('input',{type:'date'});
-  dateInput.value = st.date;
-  dateInput.onchange = e=> st.date = e.target.value;
-  dateCard.appendChild(el('div',{class:'field',style:'margin-bottom:0;'},[el('label',{},'Round date'), dateInput]));
-  app.appendChild(dateCard);
 
   const saveBtn = el('button',{class:'btn',style:'width:100%;',onclick:async()=>{
     const ids = [...st.selected];
