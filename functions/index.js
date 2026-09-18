@@ -19,9 +19,12 @@ const RESPONSE_SCHEMA = {
             type: "array",
             items: {type: "integer"},
           },
-          dots: {type: "integer"},
+          holeDots: {
+            type: "array",
+            items: {type: "integer"},
+          },
         },
-        required: ["writtenName", "holes", "dots"],
+        required: ["writtenName", "holes", "holeDots"],
       },
     },
     notes: {type: "string"},
@@ -39,15 +42,15 @@ Work column-by-column, not just row-by-row, to avoid drift:
 
 Digit accuracy: handwritten digits are easy to confuse — pay close attention to pairs that commonly get mixed up, especially 4 vs 7 (a 4 has a closed or crossed vertical stroke; a 7 has a single diagonal stroke with no vertical crossbar), as well as 3 vs 8, 1 vs 7, and 0 vs 6. When genuinely uncertain between two digits for a cell, pick your best guess but mention the ambiguity in notes.
 
-Dots: on this card, a "dot" won on a hole is marked as a small dot/period written directly above (or immediately beside) that hole's score number — it is NOT a separate written total. Some hole scores will have no dot, some will have one, and occasionally a hole could have more than one dot mark. To get a player's total dots, carefully look at every one of their 18 hole cells for these small marks and count them up across all 18 holes. Take care to distinguish the gross-score digit from the small dot mark above it — they are two different pieces of information in the same cell.
+Dots: on this card, a "dot" won on a hole is marked as a small dot/period written directly above that hole's score number — it is NOT a separate written total anywhere on the card. Each hole cell independently has zero, one, or occasionally two or more of these small marks clustered close together above the digit(s). Treat this as a per-hole counting task, not a summing task: for EACH of the 18 holes separately, zoom in mentally on just that one cell and count exactly how many distinct small dot marks appear above (or immediately around) that hole's score digit(s) — 0 if you see none, 1 if you see one, 2 if you see two separate marks, etc. Do not try to keep a running total in your head across holes; just report the count you observe in that one cell, hole by hole. Take care to distinguish the gross-score digit(s) from the small dot mark(s) above them — they are two different pieces of information in the same cell, and a dot is much smaller than a digit.
 
 For each player row, return:
 - writtenName: the name exactly as handwritten on the card (best-effort transcription).
 - matchedRosterName: if the written name clearly matches one of these known roster names, return that exact roster name; otherwise null. Known roster names: ${rosterNames.length ? rosterNames.join(", ") : "(none provided)"}.
 - holes: an array of exactly 18 integers, the gross strokes for holes 1 through 18 in order (the number itself, not counting any dot mark above it). If a value is illegible or missing, use 0 for that hole and mention it in notes.
-- dots: the player's total dot count for the round, computed by counting the small dot marks above their 18 hole scores as described above (0 if none visible).
+- holeDots: an array of exactly 18 integers, aligned index-for-index with holes — the number of dot marks you counted directly above that specific hole's score (0, 1, 2, ...). Do not sum these; just report each hole's own count.
 
-Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check — including any hole where you had to choose between two similar-looking digits, or any row where column alignment was unclear.
+Also return a top-level "notes" string describing anything ambiguous, illegible, or uncertain that a human reviewer should double check — including any hole where you had to choose between two similar-looking digits, any row where column alignment was unclear, and any hole where a dot count was hard to tell (e.g. a smudge that might be one dot or two).
 
 Respond with JSON matching the given schema only.`;
 }
@@ -106,6 +109,12 @@ exports.parseScorecard = onRequest(
         } catch (e) {
           res.status(502).json({error: "Could not parse Gemini JSON output", raw: text});
           return;
+        }
+        if (Array.isArray(parsed.players)) {
+          parsed.players = parsed.players.map((p) => ({
+            ...p,
+            dots: Array.isArray(p.holeDots) ? p.holeDots.reduce((a, b) => a + (Number(b) || 0), 0) : 0,
+          }));
         }
         res.json(parsed);
       } catch (e) {
