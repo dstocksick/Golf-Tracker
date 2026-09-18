@@ -479,17 +479,21 @@ function renderImportReview(app, st){
     block.appendChild(holesWrap);
 
     const frontSpan = el('span',{});
+    const backSpan = el('span',{});
     const totalSpan = el('span',{});
     const updateTotals = ()=>{
       frontSpan.textContent = String(row.holes.slice(0,9).reduce((a,b)=>a+b,0));
+      backSpan.textContent = String(row.holes.slice(9,18).reduce((a,b)=>a+b,0));
       totalSpan.textContent = String(row.holes.reduce((a,b)=>a+b,0));
     };
     updateTotals();
-    const totalsRow = el('div',{class:'row',style:'font-weight:700;'},[
+    block.appendChild(el('div',{class:'row',style:'font-weight:700;'},[
       el('span',{},['Front 9: ', frontSpan]),
-      el('span',{},['Total (18): ', totalSpan])
-    ]);
-    block.appendChild(totalsRow);
+      el('span',{},['Total: ', totalSpan])
+    ]));
+    block.appendChild(el('div',{class:'row',style:'font-weight:700;'},[
+      el('span',{},['Back 9: ', backSpan])
+    ]));
 
     card.appendChild(block);
   });
