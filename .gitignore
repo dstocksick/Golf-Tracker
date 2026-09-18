@@ -1,3 +1,6 @@
 node_modules/
 .firebase/
 *.log
+scorecard*.jpeg
+scorecard*.jpg
+scorecard*.png
