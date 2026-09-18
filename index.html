@@ -108,7 +108,7 @@ input[type=text],input[type=number],input[type=date],select{
 .empty{text-align:center;padding:40px 10px;opacity:.6;font-size:14.5px;}
 .team-block{border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;border:1.5px solid var(--line);}
 .team-block h4{margin:0 0 6px;font-size:13px;text-transform:none;color:var(--sky);}
-.entry-row{display:grid; grid-template-columns:54px 1fr 62px 62px; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+.entry-row{display:grid; grid-template-columns:46px 1fr 48px 44px 56px; gap:6px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
 .team-select{padding:8px 0;font-size:14px;font-weight:600;text-align:center;text-align-last:center;}
 .entry-row:last-child{border-bottom:none;}
 .entry-row .pname{font-weight:600;font-size:14px;}
@@ -573,7 +573,7 @@ function renderNewRound(app){
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Check a player in, then enter their final 18-hole gross score and total dots earned.'));
 
   const header = el('div',{class:'entry-row',style:'font-weight:700;border-bottom:1.5px solid var(--line);'},[
-    el('div',{class:'colhead'},'TEAM'), el('div',{},'Player'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
+    el('div',{class:'colhead'},'TEAM'), el('div',{},'Player'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS'), el('div',{class:'colhead'},'GREENIES')
   ]);
   card.appendChild(header);
 
@@ -607,6 +607,12 @@ function renderNewRound(app){
     dInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], dots: e.target.value===''?0:Number(e.target.value)}; };
     rowEl.appendChild(dInput);
 
+    const grInput = el('input',{type:'number',inputmode:'numeric',min:'0',placeholder:'–',class:'cell-input'});
+    grInput.value = entry.greenies===undefined ? '' : entry.greenies;
+    grInput.disabled = !st.selected.has(p.id);
+    grInput.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], greenies: e.target.value===''?0:Number(e.target.value)}; };
+    rowEl.appendChild(grInput);
+
     card.appendChild(rowEl);
   });
   app.appendChild(card);
@@ -621,7 +627,7 @@ function renderNewRound(app){
     const roundPlayers = ids.map(pid=>({id:pid, name:(players.find(p=>p.id===pid)||{}).name||'?'}));
     const scores = {};
     ids.forEach(pid=>{
-      scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0 };
+      scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0, greenies: Number(st.entries[pid].greenies)||0 };
       if(Array.isArray(st.entries[pid].holes)) scores[pid].holes = st.entries[pid].holes;
       if(st.entries[pid].team) scores[pid].team = Number(st.entries[pid].team);
     });
@@ -1030,6 +1036,7 @@ function editRound(round){
     entries: Object.fromEntries(round.playerIds.map(pid=>{
       const s = scoreOf(round,pid);
       const entry = {gross: s.gross, dots: s.dots};
+      if(typeof s.greenies==='number') entry.greenies = s.greenies;
       if(Array.isArray(s.holes)) entry.holes = s.holes;
       if(s.team) entry.team = s.team;
       return [pid, entry];
