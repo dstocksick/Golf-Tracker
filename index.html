@@ -108,7 +108,8 @@ input[type=text],input[type=number],input[type=date],select{
 .empty{text-align:center;padding:40px 10px;opacity:.6;font-size:14.5px;}
 .team-block{border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;border:1.5px solid var(--line);}
 .team-block h4{margin:0 0 6px;font-size:13px;text-transform:none;color:var(--sky);}
-.entry-row{display:grid; grid-template-columns:1fr 66px 66px; gap:10px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+.entry-row{display:grid; grid-template-columns:1fr 54px 62px 62px; gap:8px; align-items:center; padding:9px 0; border-bottom:1px solid var(--line);}
+.team-select{padding:8px 0;font-size:14px;font-weight:600;text-align:center;text-align-last:center;}
 .entry-row:last-child{border-bottom:none;}
 .entry-row .pname{font-weight:600;font-size:14px;}
 .entry-row .colhead{font-size:9.5px;text-align:center;opacity:.55;font-weight:700;}
@@ -194,7 +195,7 @@ async function deleteRoundDoc(id){ if(!db) return; try{ await db.collection('rou
 function go(view, params={}){ route = {view, params}; renderTabs(); render(); window.scrollTo(0,0); }
 
 function renderTabs(){
-  const tabs = [['roster','Roster'],['new-round','New Round'],['teams','Teams'],['history','History'],['player-history','Player History']];
+  const tabs = [['roster','Roster'],['new-round','New Round'],['teams','Team Creation'],['team-results','Team Results'],['history','History'],['player-history','Player History']];
   const elWrap = document.getElementById('tabs');
   elWrap.innerHTML = '';
   tabs.forEach(([id,label])=>{
@@ -368,6 +369,7 @@ function render(){
     if(route.view==='roster') return renderRoster(app);
     if(route.view==='new-round') return renderNewRound(app);
     if(route.view==='teams') return renderTeams(app);
+    if(route.view==='team-results') return renderTeamResults(app);
     if(route.view==='history') return renderHistory(app);
     if(route.view==='player-history') return renderPlayerHistory(app);
     if(route.view==='round-summary') return renderRoundSummary(app);
@@ -500,12 +502,15 @@ function renderImportReview(app, st){
 
   card.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
     el('button',{class:'btn',style:'flex:1;',onclick:()=>{
+      let added = false;
       rev.rows.forEach(row=>{
         if(!row.assignedPlayerId) return;
+        added = true;
         st.selected.add(row.assignedPlayerId);
         const gross = row.holes.reduce((a,b)=>a+b,0);
-        st.entries[row.assignedPlayerId] = { ...st.entries[row.assignedPlayerId], gross, holes: row.holes.slice() };
+        st.entries[row.assignedPlayerId] = { ...st.entries[row.assignedPlayerId], gross, holes: row.holes.slice(), team: st.nextTeam };
       });
+      if(added) st.nextTeam++;
       st.importReview = null;
       render();
     }},'Add to round'),
@@ -515,7 +520,7 @@ function renderImportReview(app, st){
 }
 
 function blankNewRoundState(){
-  return { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null };
+  return { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null, nextTeam:1 };
 }
 
 function renderNewRound(app){
@@ -557,7 +562,7 @@ function renderNewRound(app){
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Check a player in, then enter their final 18-hole gross score and total dots earned.'));
 
   const header = el('div',{class:'entry-row',style:'font-weight:700;border-bottom:1.5px solid var(--line);'},[
-    el('div',{},'Player'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
+    el('div',{},'Player'), el('div',{class:'colhead'},'TEAM'), el('div',{class:'colhead'},'GROSS'), el('div',{class:'colhead'},'DOTS')
   ]);
   card.appendChild(header);
 
@@ -572,6 +577,13 @@ function renderNewRound(app){
     rowEl.appendChild(label);
 
     const entry = st.entries[p.id] || {};
+    const teamSel = el('select',{class:'team-select'});
+    teamSel.appendChild(el('option',{value:''},'–'));
+    [1,2,3,4].forEach(n=>{ const o = el('option',{value:String(n)},'T'+n); if(entry.team===n) o.selected = true; teamSel.appendChild(o); });
+    teamSel.disabled = !st.selected.has(p.id);
+    teamSel.onchange = e=>{ st.entries[p.id] = {...st.entries[p.id], team: e.target.value===''?undefined:Number(e.target.value)}; };
+    rowEl.appendChild(teamSel);
+
     const gInput = el('input',{type:'number',inputmode:'numeric',min:'1',placeholder:'–',class:'cell-input'});
     gInput.value = entry.gross===undefined ? '' : entry.gross;
     gInput.disabled = !st.selected.has(p.id);
@@ -611,6 +623,7 @@ function renderNewRound(app){
     ids.forEach(pid=>{
       scores[pid] = { gross: Number(st.entries[pid].gross), dots: Number(st.entries[pid].dots)||0 };
       if(Array.isArray(st.entries[pid].holes)) scores[pid].holes = st.entries[pid].holes;
+      if(st.entries[pid].team) scores[pid].team = Number(st.entries[pid].team);
     });
     await saveRound(roundId, { date: st.date, course: (st.course||'').trim(), playerIds: ids, roundPlayers, scores, complete:true });
     window.__newRoundState = null;
@@ -618,6 +631,129 @@ function renderNewRound(app){
   }}, st.editingId ? 'Save changes' : 'Save round');
   if(st.error) app.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-bottom:8px;text-align:center;'}, st.error));
   app.appendChild(saveBtn);
+}
+
+function validHoles(h){
+  return Array.isArray(h) && h.length===18 && h.every(v=>Number(v)>0);
+}
+
+function computeTeamResults(round){
+  const ids = round.playerIds||[];
+  const holesOf = pid => (round.scores && round.scores[pid] && round.scores[pid].holes);
+  if(!ids.some(pid=>validHoles(holesOf(pid)))) return {status:'needs-holes', missing:[]};
+
+  const byTeam = {};
+  const noTeam = [];
+  ids.forEach(pid=>{
+    const t = round.scores[pid] && round.scores[pid].team;
+    if(t) (byTeam[t] = byTeam[t]||[]).push(pid); else noTeam.push(pid);
+  });
+  const nums = Object.keys(byTeam).map(Number).sort((a,b)=>a-b);
+  if(nums.length<2) return {status:'no-teams'};
+
+  const missing = [];
+  nums.forEach(t=> byTeam[t].forEach(pid=>{ if(!validHoles(holesOf(pid))) missing.push(pid); }));
+  if(missing.length) return {status:'needs-holes', missing};
+
+  const teams = nums.map(num=>{
+    const lows = Array.from({length:18}, (_,h)=>{
+      const score = Math.min(...byTeam[num].map(pid=>Number(holesOf(pid)[h])));
+      return { score, who: byTeam[num].filter(pid=>Number(holesOf(pid)[h])===score) };
+    });
+    const sum = (a,b)=> lows.slice(a,b).reduce((s,l)=>s+l.score,0);
+    return { num, players: byTeam[num], lows, front: sum(0,9), back: sum(9,18), total: sum(0,18), skins: [] };
+  });
+  let tiedHoles = 0;
+  for(let h=0; h<18; h++){
+    const best = Math.min(...teams.map(t=>t.lows[h].score));
+    const winners = teams.filter(t=>t.lows[h].score===best);
+    if(winners.length===1) winners[0].skins.push(h+1); else tiedHoles++;
+  }
+  return {status:'ok', teams, tiedHoles, noTeam};
+}
+
+function renderTeamResults(app){
+  if(!rounds.length){
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},'No rounds yet — start one from the New Round tab.')));
+    return;
+  }
+  if(!window.__teamResultsState) window.__teamResultsState = {roundId:null};
+  const st = window.__teamResultsState;
+  const round = rounds.find(r=>r.id===st.roundId) || rounds[0];
+
+  const pickCard = el('div',{class:'card'});
+  pickCard.appendChild(el('h3',{},'Team Results'));
+  const sel = el('select',{});
+  rounds.forEach(r=>{
+    const o = el('option',{value:r.id}, r.course ? `${r.date} — ${r.course}` : r.date);
+    if(r.id===round.id) o.selected = true;
+    sel.appendChild(o);
+  });
+  sel.onchange = e=>{ st.roundId = e.target.value; render(); };
+  pickCard.appendChild(el('div',{class:'field',style:'margin-bottom:0;'},[el('label',{},'Round'), sel]));
+  app.appendChild(pickCard);
+
+  const res = computeTeamResults(round);
+  if(res.status!=='ok'){
+    const msg = res.status==='no-teams'
+      ? 'This round needs at least two teams. Set the Team column on the New Round screen (or edit the round).'
+      : 'Needs hole by hole scores.' + (res.missing.length ? ' Missing for: ' + res.missing.map(pid=>nameOf(round,pid)).join(', ') + '.' : '');
+    app.appendChild(el('div',{class:'card'},el('div',{class:'empty'},msg)));
+    return;
+  }
+
+  const lowestTotal = Math.min(...res.teams.map(t=>t.total));
+  const leaders = res.teams.filter(t=>t.total===lowestTotal);
+
+  const scoreCard = el('div',{class:'card'});
+  scoreCard.appendChild(el('h3',{},'Team score and skins'));
+  const sTable = el('table',{class:'results'});
+  sTable.appendChild(el('tr',{},[el('th',{},'Team'), el('th',{},'Score'), el('th',{},'Skins')]));
+  res.teams.forEach(t=>{
+    const isLeader = t.total===lowestTotal;
+    const tag = isLeader ? el('span',{class:'badge complete',style:'margin-left:8px;'}, leaders.length>1 ? 'Tie' : 'Winner') : null;
+    sTable.appendChild(el('tr',{},[
+      el('td',{},[el('div',{style:'font-weight:700;'},['Team '+t.num, tag]), el('div',{class:'muted',style:'font-size:12px;'}, t.players.map(pid=>nameOf(round,pid)).join(', '))]),
+      el('td',{style:'font-weight:700;'}, String(t.total)),
+      el('td',{style:'font-weight:700;'}, String(t.skins.length))
+    ]));
+  });
+  scoreCard.appendChild(sTable);
+  res.teams.forEach(t=>{
+    scoreCard.appendChild(el('div',{style:'margin-top:10px;font-size:14px;'},[
+      el('span',{style:'font-weight:700;'}, `Team ${t.num} skins: `),
+      document.createTextNode(t.skins.length ? 'holes ' + t.skins.join(', ') : 'none')
+    ]));
+  });
+  scoreCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'}, `${res.tiedHoles} tied hole${res.tiedHoles===1?'':'s'} (no skin).`));
+  if(res.noTeam.length) scoreCard.appendChild(el('div',{class:'small-note'}, 'Not on a team: ' + res.noTeam.map(pid=>nameOf(round,pid)).join(', ') + '.'));
+  app.appendChild(scoreCard);
+
+  const holeCard = el('div',{class:'card'});
+  holeCard.appendChild(el('h3',{},'Hole by hole'));
+  holeCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Lowest score on each team per hole. A filled score means that team won the hole (a skin).'));
+  const wrap = el('div',{style:'overflow-x:auto;'});
+  const hTable = el('table',{class:'results'});
+  hTable.appendChild(el('tr',{},[el('th',{},'Hole'), ...res.teams.map(t=>el('th',{},'Team '+t.num))]));
+  const totalsRow = (label, key)=> el('tr',{style:'font-weight:700;'},[el('td',{},label), ...res.teams.map(t=>el('td',{},String(t[key])))]);
+  for(let h=0; h<18; h++){
+    hTable.appendChild(el('tr',{},[
+      el('td',{},String(h+1)),
+      ...res.teams.map(t=>{
+        const won = t.skins.includes(h+1);
+        return el('td',{style:'padding-right:8px;'},[
+          el('div',{style: won ? 'display:inline-block;min-width:24px;text-align:center;background:var(--fairway);color:#fff;border-radius:999px;padding:1px 8px;font-weight:700;' : 'font-weight:600;'}, String(t.lows[h].score)),
+          el('div',{class:'muted',style:'font-size:11px;line-height:1.2;'}, t.lows[h].who.map(pid=>nameOf(round,pid)).join('/'))
+        ]);
+      })
+    ]));
+    if(h===8) hTable.appendChild(totalsRow('OUT','front'));
+  }
+  hTable.appendChild(totalsRow('IN','back'));
+  hTable.appendChild(totalsRow('TOTAL','total'));
+  wrap.appendChild(hTable);
+  holeCard.appendChild(wrap);
+  app.appendChild(holeCard);
 }
 
 function renderTeams(app){
@@ -895,6 +1031,7 @@ function editRound(round){
       const s = scoreOf(round,pid);
       const entry = {gross: s.gross, dots: s.dots};
       if(Array.isArray(s.holes)) entry.holes = s.holes;
+      if(s.team) entry.team = s.team;
       return [pid, entry];
     })),
     date: round.date,
@@ -903,7 +1040,8 @@ function editRound(round){
     error: null,
     importStatus: null,
     importError: null,
-    importReview: null
+    importReview: null,
+    nextTeam: Math.max(0, ...round.playerIds.map(pid=>(scoreOf(round,pid).team||0))) + 1
   };
   go('new-round');
 }
