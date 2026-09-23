@@ -365,10 +365,28 @@ async function importScorecardPhoto(file, st){
       const photoHoles = Array.from({length:18}, ()=>null);
       const readValues = p.holes||[];
       for(let i=0;i<range.count;i++){ photoHoles[range.startIdx+i] = Number(readValues[i])||0; }
-      const row = { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', photoHoles, holes:null };
+      const row = { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', photoHoles, holes:null, guessedByOrder:false };
       row.holes = mergeRowHoles(row, st);
       return row;
     });
+    // No names visible at all (common for a folded card's second half) — fall back to matching
+    // by row order against whichever players are still missing exactly this half, since a photo's
+    // row order matches the physical card and doesn't change between its front/back halves.
+    if(rows.length && rows.every(r=>!r.assignedPlayerId)){
+      const pending = Object.keys(st.entries).filter(pid=>{
+        const h = st.entries[pid].holes;
+        if(!Array.isArray(h)) return false;
+        for(let i=0;i<range.count;i++){ if(h[range.startIdx+i]>0) return false; }
+        return true;
+      });
+      if(pending.length===rows.length){
+        rows.forEach((row,i)=>{
+          row.assignedPlayerId = pending[i];
+          row.guessedByOrder = true;
+          row.holes = mergeRowHoles(row, st);
+        });
+      }
+    }
     st.importReview = { rows, notes: json.notes||'' };
     st.importStatus = null;
   }catch(e){
@@ -474,7 +492,7 @@ function renderImportReview(app, st){
   rev.rows.forEach((row, idx)=>{
     const block = el('div',{class:'team-block'});
     const topRow = el('div',{class:'row',style:'margin-bottom:8px;flex-wrap:wrap;gap:8px;'});
-    topRow.appendChild(el('div',{style:'font-weight:700;'}, 'Written: "'+row.writtenName+'"'));
+    topRow.appendChild(el('div',{style:'font-weight:700;'}, row.writtenName==='?' ? 'No name visible on this photo' : 'Written: "'+row.writtenName+'"'));
     const sel = el('select',{style:'width:auto;'});
     sel.appendChild(el('option',{value:''},'— Ignore this row —'));
     players.slice().sort((a,b)=>a.name.localeCompare(b.name)).forEach(p=>{
@@ -482,9 +500,10 @@ function renderImportReview(app, st){
       if(p.id===row.assignedPlayerId) o.selected = true;
       sel.appendChild(o);
     });
-    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; row.holes = mergeRowHoles(row, st); render(); };
+    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; row.guessedByOrder = false; row.holes = mergeRowHoles(row, st); render(); };
     topRow.appendChild(sel);
     block.appendChild(topRow);
+    if(row.guessedByOrder) block.appendChild(el('div',{class:'small-note',style:'color:var(--gold);margin:-4px 0 8px;'},'No name visible on this photo — matched by row order. Please confirm this is right.'));
 
     const holesWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'});
     row.holes.forEach((val, hIdx)=>{
