@@ -1030,7 +1030,7 @@ function computeTeamResults(round){
 
 function computeBets(round, res){
   const BUY_IN = 5, REFUND = 2, GREENIE_PER_PLAYER = 0.25;
-  const r2 = x=> Math.round((x + 1e-9) * 100) / 100;
+  const roundToQuarter = x=> Math.round(x/0.25)*0.25;
   const ids = round.playerIds||[];
   const n = ids.length;
   const greenieValue = GREENIE_PER_PLAYER * n;
@@ -1047,18 +1047,35 @@ function computeBets(round, res){
   const totalSkins = res.teams.reduce((s,t)=>s+t.skins.length,0);
   const skinValue = totalSkins ? remaining / totalSkins : 0;
 
+  // Refund ($2 increments) and greenies ($0.25 x player count) are always already exact
+  // multiples of a quarter. Only the skins split can land on an odd fraction, so round each
+  // player's exact skin share to the nearest quarter, then hand out (or claw back) whatever
+  // quarters are left over to whoever's rounded furthest from their exact share -- the
+  // standard largest-remainder method -- so the skins total always lands exactly on
+  // `remaining` and every payout stays a clean quarter.
+  const exactSkinOf = pid=>{
+    if(!totalSkins) return remaining / n;
+    const team = res.teams.find(t=>t.players.includes(pid));
+    return team ? skinValue * team.skins.length / team.players.length : 0;
+  };
+  const skinShares = ids.map(pid=>{ const exact = exactSkinOf(pid); const rounded = roundToQuarter(exact); return {pid, exact, rounded}; });
+  const sumRounded = skinShares.reduce((s,x)=>s+x.rounded,0);
+  let diffQuarters = Math.round((remaining - sumRounded)/0.25);
+  const byRemainder = skinShares.map((x,i)=>({i, remainder: x.exact-x.rounded})).sort((a,b)=> diffQuarters>0 ? b.remainder-a.remainder : a.remainder-b.remainder);
+  for(let k=0;k<Math.abs(diffQuarters);k++){ skinShares[byRemainder[k].i].rounded += diffQuarters>0 ? 0.25 : -0.25; }
+  const skinOf = {};
+  skinShares.forEach(x=> skinOf[x.pid] = x.rounded);
+
   const rows = ids.map(pid=>{
     const team = res.teams.find(t=>t.players.includes(pid));
     const refund = winner && team===winner ? REFUND : 0;
-    const greenie = r2(greenieOf(pid) * greenieValue);
-    let skins = 0;
-    if(totalSkins){ if(team) skins = r2(skinValue * team.skins.length / team.players.length); }
-    else skins = r2(remaining / n);
-    const payout = r2(refund + greenie + skins);
-    return { pid, team: team ? team.num : null, refund, greenie, skins, payout, net: r2(payout - BUY_IN) };
+    const greenie = roundToQuarter(greenieOf(pid) * greenieValue);
+    const skins = skinOf[pid];
+    const payout = roundToQuarter(refund + greenie + skins);
+    return { pid, team: team ? team.num : null, refund, greenie, skins, payout, net: roundToQuarter(payout - BUY_IN) };
   }).sort((a,b)=> (a.team||99)-(b.team||99) || nameOf(round,a.pid).localeCompare(nameOf(round,b.pid)));
 
-  const sum = k => r2(rows.reduce((s,r)=>s+r[k],0));
+  const sum = k => roundToQuarter(rows.reduce((s,r)=>s+r[k],0));
   const totals = { refund: sum('refund'), greenie: sum('greenie'), skins: sum('skins'), payout: sum('payout'), net: sum('net') };
   const $ = x => '$' + x.toFixed(2);
   const steps = [
@@ -1069,10 +1086,10 @@ function computeBets(round, res){
     `Greenies: ${greenieCount} × ${$(greenieValue)} ($0.25 × ${n} players) = ${$(greenieTotal)}`,
     `Remaining for skins: ${$(remaining)}`,
     totalSkins
-      ? `Skin value: ${$(remaining)} ÷ ${totalSkins} skins = ${$(skinValue)} (${res.teams.map(t=>`Team ${t.num}: ${t.skins.length}`).join(', ')})`
-      : `No skins earned: ${$(remaining)} split evenly among all ${n} players`
+      ? `Skin value: ${$(remaining)} ÷ ${totalSkins} skins = ${$(skinValue)} (${res.teams.map(t=>`Team ${t.num}: ${t.skins.length}`).join(', ')}), rounded to the nearest quarter so payouts add up exactly`
+      : `No skins earned: ${$(remaining)} split evenly among all ${n} players, rounded to the nearest quarter`
   ];
-  const roundingNote = Math.abs(totals.payout - pot) > 0.005 ? `Payouts differ from the pot by ${$(Math.abs(totals.payout - pot))} due to rounding to the cent.` : '';
+  const roundingNote = Math.abs(totals.payout - pot) > 0.005 ? `Payouts differ from the pot by ${$(Math.abs(totals.payout - pot))} due to rounding.` : '';
   return { rows, sum: totals, steps, roundingNote };
 }
 
