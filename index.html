@@ -336,23 +336,38 @@ function matchRosterPlayer(name){
   return players.find(p=>p.name.trim().toLowerCase()===norm) || null;
 }
 
+function mergeRowHoles(row, st){
+  const existing = row.assignedPlayerId && st.entries[row.assignedPlayerId] && Array.isArray(st.entries[row.assignedPlayerId].holes)
+    ? st.entries[row.assignedPlayerId].holes : null;
+  return Array.from({length:18}, (_,i)=>{
+    if(row.photoHoles[i]!==null && row.photoHoles[i]!==undefined) return row.photoHoles[i];
+    return existing ? (existing[i]||0) : 0;
+  });
+}
+
 async function importScorecardPhoto(file, st){
   st.importStatus = 'reading';
   st.importError = null;
   render();
   try{
     const base64 = await fileToBase64(file);
+    const rangeKey = st.holeRange || 'full';
+    const range = HOLE_RANGE_INFO[rangeKey];
     const resp = await fetch(PARSE_SCORECARD_URL, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({imageBase64: base64, mimeType: file.type||'image/jpeg', rosterNames: players.map(p=>p.name)})
+      body: JSON.stringify({imageBase64: base64, mimeType: file.type||'image/jpeg', rosterNames: players.map(p=>p.name), holeRange: rangeKey})
     });
     const json = await resp.json();
     if(!resp.ok) throw new Error((json && json.error && (json.error.message||json.error))||'Import failed');
     const rows = (json.players||[]).map(p=>{
       const matched = matchRosterPlayer(p.matchedRosterName) || matchRosterPlayer(p.writtenName);
-      const holes = Array.from({length:18}, (_,i)=> Number((p.holes||[])[i])||0);
-      return { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', holes };
+      const photoHoles = Array.from({length:18}, ()=>null);
+      const readValues = p.holes||[];
+      for(let i=0;i<range.count;i++){ photoHoles[range.startIdx+i] = Number(readValues[i])||0; }
+      const row = { writtenName: p.writtenName||'?', assignedPlayerId: matched?matched.id:'', photoHoles, holes:null };
+      row.holes = mergeRowHoles(row, st);
+      return row;
     });
     st.importReview = { rows, notes: json.notes||'' };
     st.importStatus = null;
@@ -467,7 +482,7 @@ function renderImportReview(app, st){
       if(p.id===row.assignedPlayerId) o.selected = true;
       sel.appendChild(o);
     });
-    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; render(); };
+    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; row.holes = mergeRowHoles(row, st); render(); };
     topRow.appendChild(sel);
     block.appendChild(topRow);
 
@@ -505,16 +520,19 @@ function renderImportReview(app, st){
 
   card.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
     el('button',{class:'btn',style:'flex:1;',onclick:()=>{
-      let added = false;
+      let assignedNewTeam = false;
       rev.rows.forEach(row=>{
         if(!row.assignedPlayerId) return;
-        added = true;
         st.selected.add(row.assignedPlayerId);
         const gross = row.holes.reduce((a,b)=>a+b,0);
-        st.entries[row.assignedPlayerId] = { ...st.entries[row.assignedPlayerId], gross, holes: row.holes.slice(), team: st.nextTeam };
+        const existing = st.entries[row.assignedPlayerId];
+        const team = (existing && existing.team) ? existing.team : st.nextTeam;
+        if(!(existing && existing.team)) assignedNewTeam = true;
+        st.entries[row.assignedPlayerId] = { ...existing, gross, holes: row.holes.slice(), team };
       });
-      if(added) st.nextTeam++;
+      if(assignedNewTeam) st.nextTeam++;
       st.importReview = null;
+      st.holeRange = null;
       render();
     }},'Add to round'),
     el('button',{class:'btn ghost',style:'flex:1;',onclick:()=>{ st.importReview = null; render(); }},'Discard')
@@ -523,7 +541,25 @@ function renderImportReview(app, st){
 }
 
 function blankNewRoundState(){
-  return { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null, nextTeam:1 };
+  return { selected:new Set(), entries:{}, date: new Date().toISOString().slice(0,10), course:'', editingId:null, error:null, importStatus:null, importError:null, importReview:null, nextTeam:1, holeRange:null };
+}
+
+const HOLE_RANGE_INFO = {
+  front: {startIdx:0, count:9, label:'Front 9 (holes 1–9)'},
+  back: {startIdx:9, count:9, label:'Back 9 (holes 10–18)'},
+  full: {startIdx:0, count:18, label:'Full 18'}
+};
+
+function defaultHoleRange(st){
+  for(const pid in st.entries){
+    const holes = st.entries[pid].holes;
+    if(!Array.isArray(holes)) continue;
+    const frontDone = holes.slice(0,9).every(h=>h>0);
+    const backDone = holes.slice(9,18).every(h=>h>0);
+    if(frontDone && !backDone) return 'back';
+    if(backDone && !frontDone) return 'front';
+  }
+  return 'front';
 }
 
 function renderNewRound(app){
@@ -535,13 +571,25 @@ function renderNewRound(app){
     window.__newRoundState = blankNewRoundState();
   }
   const st = window.__newRoundState;
+  if(!st.holeRange) st.holeRange = defaultHoleRange(st);
 
   const importCard = el('div',{class:'card'});
   importCard.appendChild(el('div',{class:'row'},[
     el('h3',{style:'margin:0;'},'Import from scorecard photo'),
     confirmAction('reset-new-round', 'Clear round', ()=>{ window.__newRoundState = blankNewRoundState(); render(); }, 'Clear?')
   ]));
-  importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores for you to review. Enter dots manually below afterward.'));
+  importCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Take a photo of the paper scorecard, or choose an existing one, and it\'ll read everyone\'s hole-by-hole scores for you to review. If the card is folded, take one photo per half. Enter dots manually below afterward.'));
+  importCard.appendChild(el('div',{class:'field',style:'margin-bottom:10px;'},[
+    el('label',{},'This photo shows'),
+    el('div',{style:'display:flex;gap:6px;'}, Object.entries(HOLE_RANGE_INFO).map(([key,info])=>
+      el('button',{
+        type:'button',
+        class: st.holeRange===key ? 'btn small' : 'btn ghost small',
+        style:'flex:1;',
+        onclick:()=>{ st.holeRange = key; render(); }
+      }, info.label.replace(' (holes 1–9)','').replace(' (holes 10–18)',''))
+    ))
+  ]));
   const hiddenInputStyle = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
   const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:hiddenInputStyle});
   const fileInput = el('input',{type:'file',accept:'image/*',style:hiddenInputStyle});
@@ -596,6 +644,10 @@ function renderNewRound(app){
     cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); render(); };
     label.appendChild(cb);
     label.appendChild(el('span',{class:'pname'},p.name));
+    if(Array.isArray(entry.holes)){
+      const filled = entry.holes.filter(h=>h>0).length;
+      if(filled>0 && filled<18) label.appendChild(el('span',{class:'muted',style:'font-size:11px;font-weight:700;'}, `${filled}/18 holes`));
+    }
     rowEl.appendChild(label);
 
     const gInput = el('input',{type:'number',inputmode:'numeric',min:'1',placeholder:'–',class:'cell-input'});
@@ -638,6 +690,17 @@ function renderNewRound(app){
     window.__newRoundState = null;
     go('round-summary', {id: roundId});
   }}, st.editingId ? 'Save changes' : 'Save round');
+  const incomplete = [...st.selected].filter(pid=>{
+    const h = st.entries[pid] && st.entries[pid].holes;
+    return Array.isArray(h) && h.some(v=>v>0) && h.some(v=>!(v>0));
+  });
+  if(incomplete.length){
+    const names = incomplete.map(pid=>{
+      const filled = st.entries[pid].holes.filter(v=>v>0).length;
+      return `${(players.find(p=>p.id===pid)||{}).name||'?'} (${filled}/18)`;
+    }).join(', ');
+    app.appendChild(el('div',{class:'small-note',style:'color:var(--gold);margin-bottom:8px;text-align:center;'}, `Incomplete hole data — ${names}. You can still save, but Team Results won't have a winner until every hole is filled in.`));
+  }
   if(st.error) app.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-bottom:8px;text-align:center;'}, st.error));
   app.appendChild(saveBtn);
 }
