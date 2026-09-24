@@ -660,8 +660,26 @@ async function importScorecardPhotoLive(file, ls, round){
   render();
 }
 
+function liveKnownTeams(round){
+  const known = {};
+  (round.playerIds||[]).forEach(pid=>{ const t = round.scores[pid] && round.scores[pid].team; if(t) known[pid]=t; });
+  return known;
+}
+
+// Team each review row will go to: the user's pick if they made one, else the player's
+// existing team, else the team of another already-known player on this photo, else a new team.
+function liveRowTeam(row, rows, round){
+  if(row.team) return row.team;
+  const known = liveKnownTeams(round);
+  if(known[row.assignedPlayerId]) return known[row.assignedPlayerId];
+  const sibling = rows.find(r=>r.assignedPlayerId && known[r.assignedPlayerId]);
+  if(sibling) return known[sibling.assignedPlayerId];
+  return Math.max(0, ...Object.values(known)) + 1;
+}
+
 function renderLiveImportReview(app, ls, round){
   const rev = ls.importReview;
+  const maxTeam = Math.max(0, ...Object.values(liveKnownTeams(round)), ...rev.rows.map(r=>r.team||0));
   const card = el('div',{class:'card'});
   card.appendChild(el('h3',{},'Review scorecard import'));
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Check the player match and every hole score below, fix anything misread, then add it live.'));
@@ -678,8 +696,19 @@ function renderLiveImportReview(app, ls, round){
       if(p.id===row.assignedPlayerId) o.selected = true;
       sel.appendChild(o);
     });
-    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; row.guessedByOrder = false; row.holes = mergeRowHolesLive(row, round); render(); };
+    sel.onchange = e=>{ row.assignedPlayerId = e.target.value; row.guessedByOrder = false; row.team = null; row.holes = mergeRowHolesLive(row, round); render(); };
     topRow.appendChild(sel);
+    if(row.assignedPlayerId){
+      const cur = liveRowTeam(row, rev.rows, round);
+      const tSel = el('select',{style:'width:auto;'});
+      for(let n=1; n<=Math.max(maxTeam, cur)+1; n++){
+        const o = el('option',{value:n}, 'Team '+n);
+        if(n===cur) o.selected = true;
+        tSel.appendChild(o);
+      }
+      tSel.onchange = e=>{ row.team = Number(e.target.value); render(); };
+      topRow.appendChild(tSel);
+    }
     block.appendChild(topRow);
     if(row.guessedByOrder) block.appendChild(el('div',{class:'small-note',style:'color:var(--gold);margin:-4px 0 8px;'},'No name visible on this photo — matched by row order. Please confirm this is right.'));
 
@@ -717,19 +746,14 @@ function renderLiveImportReview(app, ls, round){
 
   card.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
     el('button',{class:'btn',style:'flex:1;',onclick: async()=>{
-      const knownTeams = {};
-      (round.playerIds||[]).forEach(pid=>{ const t = round.scores[pid] && round.scores[pid].team; if(t) knownTeams[pid]=t; });
-      const nextTeam = Math.max(0, ...Object.values(knownTeams)) + 1;
       const fields = {};
       const newIds = [];
       const newRoundPlayers = [];
-      let assignedNewTeam = false;
       rev.rows.forEach(row=>{
         if(!row.assignedPlayerId) return;
         const pid = row.assignedPlayerId;
         const gross = row.holes.reduce((a,b)=>a+b,0);
-        const team = knownTeams[pid] || nextTeam;
-        if(!knownTeams[pid]) assignedNewTeam = true;
+        const team = liveRowTeam(row, rev.rows, round);
         const prior = round.scores[pid] || {};
         fields['scores.'+pid] = { ...prior, gross, holes: row.holes.slice(), team };
         newIds.push(pid);
@@ -1299,10 +1323,22 @@ function renderLiveLeaderboard(app){
     }).sort((a,b)=> b.holesPlayed - a.holesPlayed || a.total - b.total);
     const iTable = el('table',{class:'results'});
     iTable.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Team'), el('th',{},'Holes'), el('th',{},'Score so far')]));
+    const maxTeam = Math.max(0, ...rows.map(r=>r.team||0));
     rows.forEach(r=>{
+      const tSel = el('select',{class:'team-select',style:'width:auto;min-width:52px;'});
+      tSel.appendChild(el('option',{value:''},'–'));
+      for(let n=1; n<=maxTeam+1; n++){
+        const o = el('option',{value:n}, 'T'+n);
+        if(n===r.team) o.selected = true;
+        tSel.appendChild(o);
+      }
+      tSel.onchange = e=>{
+        const n = Number(e.target.value);
+        updateRoundFields(round.id, {['scores.'+r.pid+'.team']: n || firebase.firestore.FieldValue.delete()});
+      };
       iTable.appendChild(el('tr',{},[
         el('td',{style:'font-weight:600;'}, nameOf(round,r.pid)),
-        el('td',{}, r.team ? 'T'+r.team : '–'),
+        el('td',{}, tSel),
         el('td',{}, r.holesPlayed ? `${r.holesPlayed}/18` : '–'),
         el('td',{style:'font-weight:700;'}, r.holesPlayed ? String(r.total) : '–')
       ]));

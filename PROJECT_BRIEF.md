@@ -24,7 +24,8 @@ Firebase is on the **Blaze** plan (required for Cloud Functions; cost stays near
 2. **Live Leaderboard** tab (gold dot on the tab while a round is live) — anyone with the link can view it on their own phone, and anyone can add photos:
    - "This photo shows" selector: Front 9 / Back 9 / Full 18 (physical cards fold, so one card is usually two photos). Smart default: Front 9 when nothing is in, Back 9 when a player has front 9 but not back 9.
    - Take photo / Choose photo → Cloud Function reads gross scores → editable review grid (player match dropdown, 18 hole inputs, live Front 9 / Back 9 / Total) → "Add live".
-   - Each import becomes the next team automatically; a photo whose matched players already have a team merges into that team.
+   - Each review row has a **Team** picker. Default: the player's existing team, else the team of another already-teamed player on the same photo, else a new team. Pick a different team to override (e.g. a mixed card).
+   - The **Team** column in the individual list is a dropdown too, so a player's team can be fixed mid-round (writes only `scores.<pid>.team`; "–" takes them off a team).
    - Shows live **team best-ball score and skins through the holes known so far** (a hole counts once every team has at least one score for it) and an individual list (holes played, running gross; not directly comparable until everyone has played the same holes).
    - Writes go straight to Firestore with field-level `update()` (`scores.<pid>`, `arrayUnion` on `playerIds`/`roundPlayers`), so two teams photographing at once cannot overwrite each other (verified against real Firestore).
 3. **Review & complete round** button → the New Round screen in edit mode, relabeled "Complete round": final review of players/teams/holes, manual **Dots** and **Greenies** entry, then a two-step confirm ("This will end the round for all players and teams. Are you sure?") that saves with `complete: true`.
