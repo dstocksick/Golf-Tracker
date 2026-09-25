@@ -2,7 +2,7 @@
 
 A single-file web app (`index.html`, no build step) for a golf group's rounds: live scoring from scorecard photos, teams, skins and betting payouts. It started as a Claude Artifact ("Fairway Ledger") and now has its own hosting. This brief plus the repo is everything needed to continue; the original chat history is not required.
 
-- **Current version:** v1.0 (git tag `v1.0`, released 2026-09-24). Older tag: `v0.1`.
+- **Current version:** v1.1 (git tag `v1.1`, released 2026-09-25). Older tags: `v1.0`, `v0.1`.
 - **Live site:** https://dstocksick.github.io/Golf-Tracker/ (GitHub Pages, served from `master`)
 - **Repo:** https://github.com/dstocksick/Golf-Tracker (public; free-plan Pages needs a public repo)
 - **Branches:** work on `experiment`; merge to `master` (fast-forward) only when the user says so, because `master` deploys to the live site friends use.
@@ -18,7 +18,7 @@ A single-file web app (`index.html`, no build step) for a golf group's rounds: l
 
 Firebase is on the **Blaze** plan (required for Cloud Functions; cost stays near $0). The Gemini API is **not free** (prepaid credits, see below).
 
-## How a round works (v1.0)
+## How a round works (v1.1)
 
 1. **Start Round** tab — only course and date. Creates a shared round in Firestore with `complete: false` and jumps to Live Leaderboard. If a round is already in progress the tab shows "Round in progress" with a link instead (only one live round at a time).
 2. **Live Leaderboard** tab (gold dot on the tab while a round is live) — anyone with the link can view it on their own phone, and anyone can add photos:
