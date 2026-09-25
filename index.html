@@ -677,6 +677,50 @@ function liveRowTeam(row, rows, round){
   return Math.max(0, ...Object.values(known)) + 1;
 }
 
+// Writes reviewed rows inside a transaction so teams and existing holes come from the
+// latest server copy of the round, not this phone's possibly stale one (another card
+// added a moment ago, or the page catching up after the camera app).
+function buildLiveRowFields(rows, round){
+  const fields = {};
+  const newIds = [];
+  const newRoundPlayers = [];
+  rows.forEach(row=>{
+    if(!row.assignedPlayerId) return;
+    const pid = row.assignedPlayerId;
+    const prior = (round.scores && round.scores[pid]) || {};
+    const priorHoles = Array.isArray(prior.holes) ? prior.holes : [];
+    const holes = row.holes.map((v,i)=> v>0 ? v : (priorHoles[i]||0));
+    const gross = holes.reduce((a,b)=>a+b,0);
+    const team = liveRowTeam(row, rows, round);
+    fields['scores.'+pid] = { ...prior, gross, holes, team };
+    newIds.push(pid);
+    const p = players.find(pp=>pp.id===pid);
+    newRoundPlayers.push({id:pid, name: p?p.name:'?'});
+  });
+  if(!newIds.length) return null;
+  fields.playerIds = firebase.firestore.FieldValue.arrayUnion(...newIds);
+  fields.roundPlayers = firebase.firestore.FieldValue.arrayUnion(...newRoundPlayers);
+  return fields;
+}
+
+async function addLiveRows(roundId, rows){
+  if(!db) return false;
+  const ref = db.collection('rounds').doc(roundId);
+  try{
+    await db.runTransaction(async tx=>{
+      const snap = await tx.get(ref);
+      if(!snap.exists) throw new Error('Round not found');
+      const fresh = {id: snap.id, scores:{}, ...snap.data()};
+      const fields = buildLiveRowFields(rows, fresh);
+      if(fields) tx.update(ref, fields);
+    });
+    return true;
+  }catch(e){
+    setStatus('Could not save — try again');
+    return false;
+  }
+}
+
 function renderLiveImportReview(app, ls, round){
   const rev = ls.importReview;
   const maxTeam = Math.max(0, ...Object.values(liveKnownTeams(round)), ...rev.rows.map(r=>r.team||0));
@@ -745,30 +789,14 @@ function renderLiveImportReview(app, ls, round){
   });
 
   card.appendChild(el('div',{style:'display:flex;gap:10px;margin-top:6px;'},[
-    el('button',{class:'btn',style:'flex:1;',onclick: async()=>{
-      const fields = {};
-      const newIds = [];
-      const newRoundPlayers = [];
-      rev.rows.forEach(row=>{
-        if(!row.assignedPlayerId) return;
-        const pid = row.assignedPlayerId;
-        const gross = row.holes.reduce((a,b)=>a+b,0);
-        const team = liveRowTeam(row, rev.rows, round);
-        const prior = round.scores[pid] || {};
-        fields['scores.'+pid] = { ...prior, gross, holes: row.holes.slice(), team };
-        newIds.push(pid);
-        const p = players.find(pp=>pp.id===pid);
-        newRoundPlayers.push({id:pid, name: p?p.name:'?'});
-      });
-      if(newIds.length){
-        fields.playerIds = firebase.firestore.FieldValue.arrayUnion(...newIds);
-        fields.roundPlayers = firebase.firestore.FieldValue.arrayUnion(...newRoundPlayers);
-        await updateRoundFields(round.id, fields);
-      }
-      ls.importReview = null;
-      ls.holeRange = null;
+    el('button',{class:'btn',style:'flex:1;',disabled: !!ls.saving,onclick: async()=>{
+      ls.saving = true;
       render();
-    }},'Add live'),
+      const ok = await addLiveRows(round.id, rev.rows);
+      ls.saving = false;
+      if(ok){ ls.importReview = null; ls.holeRange = null; }
+      render();
+    }}, ls.saving ? 'Adding…' : 'Add live'),
     el('button',{class:'btn ghost',style:'flex:1;',onclick:()=>{ ls.importReview = null; render(); }},'Discard')
   ]));
   app.appendChild(card);
