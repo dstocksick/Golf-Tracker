@@ -161,7 +161,7 @@ const firebaseConfig = {
 let db = null;
 let players = [];   // {id,name}
 let rounds = [];    // {id, date, playerIds, roundPlayers:[{id,name}], scores:{pid:{gross,dots}}, complete}
-let route = { view: 'roster', params: {} };
+let route = { view: 'live-leaderboard', params: {} };
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2));
 function setStatus(msg){ document.getElementById('statusLine').textContent = msg; }
@@ -204,7 +204,7 @@ function finishedRounds(){ return rounds.filter(r=>r.complete!==false); }
 function go(view, params={}){ route = {view, params}; renderTabs(); render(); window.scrollTo(0,0); }
 
 function renderTabs(){
-  const tabs = [['roster','Roster'],['new-round','Start Round'],['live-leaderboard','Live Leaderboard'],['teams','Team Creation'],['team-results','Team Results'],['history','History'],['player-history','Player History']];
+  const tabs = [['live-leaderboard','Live Leaderboard'],['roster','Roster'],['new-round','Start Round'],['teams','Team Creation'],['team-results','Team Results'],['history','History'],['player-history','Player History']];
   const elWrap = document.getElementById('tabs');
   elWrap.innerHTML = '';
   const live = currentLiveRound();

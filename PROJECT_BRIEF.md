@@ -36,7 +36,7 @@ The same edit screen is used by History → Edit for finished rounds (button say
 
 ## Tabs
 
-Roster · Start Round · Live Leaderboard · Team Creation · Team Results · History · Player History
+Live Leaderboard (opens by default) · Roster · Start Round · Team Creation · Team Results · History · Player History
 
 - **Roster** — persistent player list. Removing a player keeps their name in past rounds.
 - **Team Creation** — pick players, 2 or 3 teams, "Suggest teams" balances by recency-weighted average gross (snake seed + swap local search; weight 0.6 per round back). The only place team suggestion lives.
