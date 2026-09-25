@@ -591,7 +591,7 @@ function blankNewRoundState(){
 /* ---------- live leaderboard import (writes straight to Firestore per player, so two
    people photographing different teams at the same time don't clobber each other) ---------- */
 function blankLiveImportState(){
-  return { holeRange:null, importStatus:null, importError:null, importReview:null };
+  return { holeRange:null, importStatus:null, importError:null, importReview:null, editing:null };
 }
 
 function defaultHoleRangeLive(round){
@@ -719,6 +719,97 @@ async function addLiveRows(roundId, rows){
     setStatus('Could not save — try again');
     return false;
   }
+}
+
+/* ---------- edit one player's holes/team mid-round ---------- */
+function openLivePlayerEditor(ls, round, pid){
+  const s = round.scores[pid] || {};
+  const holes = Array.isArray(s.holes) ? s.holes.slice(0,18) : [];
+  while(holes.length<18) holes.push(0);
+  ls.editing = { pid, holes: holes.map(h=>Number(h)||0), team: s.team||0, saving:false };
+  render();
+  const card = document.getElementById('live-player-editor');
+  if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// Only this player's holes, gross and team are written (dots/greenies untouched), in a
+// transaction so it can't collide with a photo import landing at the same moment.
+async function saveLivePlayerEdit(roundId, ed){
+  if(!db) return false;
+  const ref = db.collection('rounds').doc(roundId);
+  try{
+    await db.runTransaction(async tx=>{
+      const snap = await tx.get(ref);
+      if(!snap.exists) throw new Error('Round not found');
+      const key = 'scores.'+ed.pid;
+      tx.update(ref, {
+        [key+'.holes']: ed.holes.slice(),
+        [key+'.gross']: ed.holes.reduce((a,b)=>a+b,0),
+        [key+'.team']: ed.team || firebase.firestore.FieldValue.delete()
+      });
+    });
+    return true;
+  }catch(e){
+    setStatus('Could not save — try again');
+    return false;
+  }
+}
+
+function renderLivePlayerEditor(app, ls, round){
+  const ed = ls.editing;
+  const card = el('div',{class:'card',id:'live-player-editor',style:'scroll-margin-top:90px;'});
+  card.appendChild(el('h3',{},'Edit '+nameOf(round, ed.pid)));
+
+  const maxTeam = Math.max(0, ...(round.playerIds||[]).map(pid=>(round.scores[pid] && round.scores[pid].team)||0));
+  const tSel = el('select',{style:'width:auto;'});
+  tSel.appendChild(el('option',{value:''},'No team'));
+  for(let n=1; n<=Math.max(maxTeam, ed.team)+1; n++){
+    const o = el('option',{value:n}, 'Team '+n);
+    if(n===ed.team) o.selected = true;
+    tSel.appendChild(o);
+  }
+  tSel.onchange = e=>{ ed.team = Number(e.target.value)||0; };
+  card.appendChild(el('div',{class:'field'},[el('label',{},'Team'), tSel]));
+
+  const frontSpan = el('span',{});
+  const backSpan = el('span',{});
+  const totalSpan = el('span',{});
+  const updateTotals = ()=>{
+    frontSpan.textContent = String(ed.holes.slice(0,9).reduce((a,b)=>a+b,0));
+    backSpan.textContent = String(ed.holes.slice(9,18).reduce((a,b)=>a+b,0));
+    totalSpan.textContent = String(ed.holes.reduce((a,b)=>a+b,0));
+  };
+  const holesWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'});
+  ed.holes.forEach((val, hIdx)=>{
+    const box = el('div',{style:'width:38px;text-align:center;'});
+    box.appendChild(el('div',{style:'font-size:9.5px;opacity:.55;font-weight:700;'}, String(hIdx+1)));
+    const hInput = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'padding:6px 2px;font-size:13px;'});
+    hInput.value = val || '';
+    hInput.oninput = e=>{ ed.holes[hIdx] = Math.max(0, Number(e.target.value)||0); updateTotals(); };
+    box.appendChild(hInput);
+    holesWrap.appendChild(box);
+  });
+  card.appendChild(holesWrap);
+  updateTotals();
+  card.appendChild(el('div',{class:'row',style:'font-weight:700;'},[
+    el('span',{},['Front 9: ', frontSpan]),
+    el('span',{},['Back 9: ', backSpan]),
+    el('span',{},['Total: ', totalSpan])
+  ]));
+  card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Leave a hole blank if it hasn\'t been played yet.'));
+
+  card.appendChild(el('div',{style:'display:flex;gap:10px;'},[
+    el('button',{class:'btn',style:'flex:1;',disabled: ed.saving,onclick: async()=>{
+      ed.saving = true;
+      render();
+      const ok = await saveLivePlayerEdit(round.id, ed);
+      ed.saving = false;
+      if(ok) ls.editing = null;
+      render();
+    }}, ed.saving ? 'Saving…' : 'Save'),
+    el('button',{class:'btn ghost',style:'flex:1;',onclick:()=>{ ls.editing = null; render(); }},'Cancel')
+  ]));
+  app.appendChild(card);
 }
 
 function renderLiveImportReview(app, ls, round){
@@ -1337,6 +1428,9 @@ function renderLiveLeaderboard(app){
   }
   app.appendChild(scoreCard);
 
+  if(ls.editing && !(round.playerIds||[]).includes(ls.editing.pid)) ls.editing = null;
+  if(ls.editing) renderLivePlayerEditor(app, ls, round);
+
   const indCard = el('div',{class:'card'});
   indCard.appendChild(el('h3',{},'Individual leaderboard'));
   const ids = round.playerIds||[];
@@ -1365,14 +1459,14 @@ function renderLiveLeaderboard(app){
         updateRoundFields(round.id, {['scores.'+r.pid+'.team']: n || firebase.firestore.FieldValue.delete()});
       };
       iTable.appendChild(el('tr',{},[
-        el('td',{style:'font-weight:600;'}, nameOf(round,r.pid)),
+        el('td',{}, el('button',{class:'link-btn',style:'font-size:14.5px;text-align:left;',onclick:()=>openLivePlayerEditor(ls, round, r.pid)}, nameOf(round,r.pid))),
         el('td',{}, tSel),
         el('td',{}, r.holesPlayed ? `${r.holesPlayed}/18` : '–'),
         el('td',{style:'font-weight:700;'}, r.holesPlayed ? String(r.total) : '–')
       ]));
     });
     indCard.appendChild(iTable);
-    indCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'},'Scores aren\'t directly comparable until everyone\'s played the same number of holes.'));
+    indCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'},'Tap a name to edit that player\'s scores or team. Scores aren\'t directly comparable until everyone\'s played the same number of holes.'));
   }
   app.appendChild(indCard);
 
