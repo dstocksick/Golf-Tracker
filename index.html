@@ -721,12 +721,48 @@ async function addLiveRows(roundId, rows){
   }
 }
 
+// 18 hole inputs with live Front 9 / Back 9 / Total; edits the given array in place.
+function holesEditorGrid(holes){
+  const wrap = el('div',{});
+  const frontSpan = el('span',{});
+  const backSpan = el('span',{});
+  const totalSpan = el('span',{});
+  const updateTotals = ()=>{
+    frontSpan.textContent = String(holes.slice(0,9).reduce((a,b)=>a+b,0));
+    backSpan.textContent = String(holes.slice(9,18).reduce((a,b)=>a+b,0));
+    totalSpan.textContent = String(holes.reduce((a,b)=>a+b,0));
+  };
+  const holesWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'});
+  holes.forEach((val, hIdx)=>{
+    const box = el('div',{style:'width:38px;text-align:center;'});
+    box.appendChild(el('div',{style:'font-size:9.5px;opacity:.55;font-weight:700;'}, String(hIdx+1)));
+    const hInput = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'padding:6px 2px;font-size:13px;'});
+    hInput.value = val || '';
+    hInput.oninput = e=>{ holes[hIdx] = Math.max(0, Number(e.target.value)||0); updateTotals(); };
+    box.appendChild(hInput);
+    holesWrap.appendChild(box);
+  });
+  wrap.appendChild(holesWrap);
+  updateTotals();
+  wrap.appendChild(el('div',{class:'row',style:'font-weight:700;'},[
+    el('span',{},['Front 9: ', frontSpan]),
+    el('span',{},['Back 9: ', backSpan]),
+    el('span',{},['Total: ', totalSpan])
+  ]));
+  wrap.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Leave a hole blank if it hasn\'t been played yet.'));
+  return wrap;
+}
+
+function eighteenHoles(holes){
+  const out = Array.isArray(holes) ? holes.slice(0,18).map(h=>Number(h)||0) : [];
+  while(out.length<18) out.push(0);
+  return out;
+}
+
 /* ---------- edit one player's holes/team mid-round ---------- */
 function openLivePlayerEditor(ls, round, pid){
   const s = round.scores[pid] || {};
-  const holes = Array.isArray(s.holes) ? s.holes.slice(0,18) : [];
-  while(holes.length<18) holes.push(0);
-  ls.editing = { pid, holes: holes.map(h=>Number(h)||0), team: s.team||0, saving:false };
+  ls.editing = { pid, holes: eighteenHoles(s.holes), team: s.team||0, saving:false };
   render();
   const card = document.getElementById('live-player-editor');
   if(card) card.scrollIntoView({behavior:'smooth', block:'start'});
@@ -771,32 +807,7 @@ function renderLivePlayerEditor(app, ls, round){
   tSel.onchange = e=>{ ed.team = Number(e.target.value)||0; };
   card.appendChild(el('div',{class:'field'},[el('label',{},'Team'), tSel]));
 
-  const frontSpan = el('span',{});
-  const backSpan = el('span',{});
-  const totalSpan = el('span',{});
-  const updateTotals = ()=>{
-    frontSpan.textContent = String(ed.holes.slice(0,9).reduce((a,b)=>a+b,0));
-    backSpan.textContent = String(ed.holes.slice(9,18).reduce((a,b)=>a+b,0));
-    totalSpan.textContent = String(ed.holes.reduce((a,b)=>a+b,0));
-  };
-  const holesWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;'});
-  ed.holes.forEach((val, hIdx)=>{
-    const box = el('div',{style:'width:38px;text-align:center;'});
-    box.appendChild(el('div',{style:'font-size:9.5px;opacity:.55;font-weight:700;'}, String(hIdx+1)));
-    const hInput = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'padding:6px 2px;font-size:13px;'});
-    hInput.value = val || '';
-    hInput.oninput = e=>{ ed.holes[hIdx] = Math.max(0, Number(e.target.value)||0); updateTotals(); };
-    box.appendChild(hInput);
-    holesWrap.appendChild(box);
-  });
-  card.appendChild(holesWrap);
-  updateTotals();
-  card.appendChild(el('div',{class:'row',style:'font-weight:700;'},[
-    el('span',{},['Front 9: ', frontSpan]),
-    el('span',{},['Back 9: ', backSpan]),
-    el('span',{},['Total: ', totalSpan])
-  ]));
-  card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Leave a hole blank if it hasn\'t been played yet.'));
+  card.appendChild(holesEditorGrid(ed.holes));
 
   card.appendChild(el('div',{style:'display:flex;gap:10px;'},[
     el('button',{class:'btn',style:'flex:1;',disabled: ed.saving,onclick: async()=>{
@@ -1036,12 +1047,22 @@ function renderNewRound(app){
     cb.checked = st.selected.has(p.id);
     cb.onchange = ()=>{ if(cb.checked) st.selected.add(p.id); else st.selected.delete(p.id); render(); };
     label.appendChild(cb);
-    label.appendChild(el('span',{class:'pname'},p.name));
+    // Checked-in players' names open their hole-by-hole editor below the row.
+    const nameWrap = el('div',{style:'display:flex;align-items:center;gap:8px;min-width:0;'});
+    nameWrap.appendChild(label);
+    if(st.selected.has(p.id)){
+      nameWrap.appendChild(el('button',{type:'button',class:'link-btn pname',style:'font-size:inherit;text-align:left;',onclick:()=>{
+        st.holeEdit = (st.holeEdit && st.holeEdit.pid===p.id) ? null : { pid:p.id, holes: eighteenHoles(entry.holes) };
+        render();
+      }}, p.name));
+    } else {
+      label.appendChild(el('span',{class:'pname'},p.name));
+    }
     if(Array.isArray(entry.holes)){
       const filled = entry.holes.filter(h=>h>0).length;
-      if(filled>0 && filled<18) label.appendChild(el('span',{class:'muted',style:'font-size:11px;font-weight:700;'}, `${filled}/18 holes`));
+      if(filled>0 && filled<18) nameWrap.appendChild(el('span',{class:'muted',style:'font-size:11px;font-weight:700;'}, `${filled}/18 holes`));
     }
-    rowEl.appendChild(label);
+    rowEl.appendChild(nameWrap);
 
     const gInput = el('input',{type:'number',inputmode:'numeric',min:'1',placeholder:'–',class:'cell-input'});
     gInput.value = entry.gross===undefined ? '' : entry.gross;
@@ -1062,6 +1083,24 @@ function renderNewRound(app){
     rowEl.appendChild(grInput);
 
     card.appendChild(rowEl);
+
+    if(st.holeEdit && st.holeEdit.pid===p.id && st.selected.has(p.id)){
+      const he = st.holeEdit;
+      const block = el('div',{class:'team-block',style:'margin:6px 0 10px;'});
+      block.appendChild(el('div',{style:'font-weight:700;margin-bottom:8px;'}, p.name+' — hole by hole'));
+      block.appendChild(holesEditorGrid(he.holes));
+      block.appendChild(el('div',{style:'display:flex;gap:10px;'},[
+        el('button',{type:'button',class:'btn small',style:'flex:1;',onclick:()=>{
+          const total = he.holes.reduce((a,b)=>a+b,0);
+          if(total>0) st.entries[p.id] = {...st.entries[p.id], holes: he.holes.slice(), gross: total};
+          st.holeEdit = null;
+          render();
+        }},'Done'),
+        el('button',{type:'button',class:'btn ghost small',style:'flex:1;',onclick:()=>{ st.holeEdit = null; render(); }},'Cancel')
+      ]));
+      block.appendChild(el('div',{class:'small-note'},'Done updates the gross score. Nothing is saved until you press '+(isCompletingLive ? 'Complete round.' : 'Save changes.')));
+      card.appendChild(block);
+    }
   });
   app.appendChild(card);
 

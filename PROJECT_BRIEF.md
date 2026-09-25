@@ -32,6 +32,8 @@ Firebase is on the **Blaze** plan (required for Cloud Functions; cost stays near
    - Writes go straight to Firestore with field-level `update()` (`scores.<pid>`, `arrayUnion` on `playerIds`/`roundPlayers`), so two teams photographing at once cannot overwrite each other (verified against real Firestore).
 3. **Review & complete round** button → the New Round screen in edit mode, relabeled "Complete round": final review of players/teams/holes, manual **Dots** and **Greenies** entry, then a two-step confirm ("This will end the round for all players and teams. Are you sure?") that saves with `complete: true`.
 
+On that screen a checked-in player's **name is a link** that opens their 18 holes under the row; Done copies them into the form and sets gross to the sum (saved only with Complete round / Save changes).
+
 The same edit screen is used by History → Edit for finished rounds (button says "Save changes", no confirm). Manual gross-only entry still works there (rounds without hole scores just have no team result).
 
 ## Tabs
