@@ -2225,8 +2225,10 @@ function renderCourseEdit(app){
     cs.error = null;
     const tees = d.tees.filter(t=>t.name.trim());
     if(tees.length && !tees.some(t=>t.name===d.playedTee)){ cs.error = 'Pick the tees your group plays.'; render(); return; }
-    const si = d.strokeIndex.filter(v=>v>0);
-    if(si.some(v=>v>18) || new Set(si).size!==si.length){ cs.error = 'Each hole handicap should be a different number from 1 to 18.'; render(); return; }
+    // Repeats are allowed across the two nines (27-hole courses number each nine on its
+    // own), just not within one nine.
+    const nineDupes = [d.strokeIndex.slice(0,9), d.strokeIndex.slice(9)].some(n=>{ const v = n.filter(x=>x>0); return new Set(v).size!==v.length; });
+    if(d.strokeIndex.some(v=>v>18) || nineDupes){ cs.error = 'Hole handicaps must be 1 to 18, with no repeats within the same nine.'; render(); return; }
     const data = {
       name: d.name,
       par: d.par.map(v=>Number(v)||0),
