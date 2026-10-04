@@ -12,7 +12,7 @@ A single-file web app (`index.html`, no build step) for a golf group's rounds: l
 | Piece | What | Notes |
 |---|---|---|
 | Frontend | `index.html` (vanilla JS, inline CSS) | Fonts from Google Fonts. Theme pinned to light (`data-theme="light"` on `<html>`). |
-| Data | Firebase Firestore, project `golf-bet-tracker-cba58` | Collections `players` and `rounds`, compat SDK from Google's CDN. Rules are open (`allow read, write: if true`) so friends need no login. Nothing sensitive belongs in it. |
+| Data | Firebase Firestore, project `golf-bet-tracker-cba58` | Collections `players`, `rounds` and `courses`, compat SDK from Google's CDN. Rules are open (`allow read, write: if true`) so friends need no login. Nothing sensitive belongs in it. |
 | Scorecard reading | Firebase Cloud Function `parseScorecard` (`functions/index.js`) | Calls the Google Gemini API. Node.js 22, 2nd gen, `us-central1`, `firebase-functions` 7. |
 | Hosting | GitHub Pages | Merge to `master` and push; Pages rebuilds in about a minute. |
 
@@ -38,14 +38,17 @@ The same edit screen is used by History → Edit for finished rounds (button say
 
 ## Tabs
 
-Live Leaderboard (opens by default) · Roster · Start Round · Team Creation · Team Results · History · Player History
+Live Leaderboard (opens by default) · Roster · Start Round · Team Creation · Team Results · History · Player History · Courses
 
 - **Roster** — persistent player list. Removing a player keeps their name in past rounds.
 - **Team Creation** — pick players, 2 or 3 teams, "Suggest teams" balances by recency-weighted average gross (snake seed + swap local search; weight 0.6 per round back). The only place team suggestion lives.
 - **Team Results** (finished rounds only) — round picker; team score and skins card (small "Winner"/"Tie" tag, no banner); collapsible **Betting payouts** (starts open) and **Hole by hole** (starts closed).
 - **History** (finished rounds only) — collapsed to `date — course · N players · Team X won`; expanded shows Team column with a "Winner" badge and the result line; links to Edit, Round Summary and Delete.
-- **Player History** — gross matrix per player per finished round with Total and Average.
-- **Round Summary** page (from History) — score table and the dot payouts. It does not show teams or team betting.
+- **Player History** — gross matrix per player per finished round with Total and Average, then a **Scoring vs par** card (rounds on courses with par saved and full 18 hole scores only): rounds, average to par, average strokes on par 3s/4s/5s, and birdie-or-better / par / bogey / double+ percentages.
+- **Courses** — every course name from rounds plus any added by hand. Tap one to edit its card info: read it from a photo of the printed card (Front 9 / Back 9 / Full 18, one photo per half; only non-zero reads overwrite, so halves merge), then review par, hole handicap (stroke index) and per-tee yardages, rating and slope. The user picks **"We play"** for the group's tee; save requires a pick when tees exist and hole handicaps must be distinct 1–18.
+- **Round Summary** page (from History) — score table (with **To par** for full 18s when the course has par) and the dot payouts. It does not show teams or team betting.
+
+**Where par shows up:** Live Leaderboard (course line, score to par next to "Score so far", list sorted by to-par when par is known), Round Summary, Team Results hole-by-hole (Par column), Player History (Scoring vs par). Start Round and Edit round suggest known course names (a `datalist`) so names stay consistent.
 
 Finished round = `complete !== false` (old rounds have `complete: true`). `currentLiveRound()` and `finishedRounds()` are the helpers.
 
@@ -74,6 +77,15 @@ Finished round = `complete !== false` (old rounds have `complete: true`). `curre
   scores: { [pid]: { gross, dots, greenies, holes?: [18 numbers], team?: 1-4 } } }
 ```
 
+**`courses` documents** — id is `courseKey(name)` (lowercase, non-alphanumerics → `-`, e.g. `old-kinderhook`):
+
+```
+{ name, par: [18], strokeIndex: [18], playedTee: 'White',
+  tees: [{ name, rating|null, slope|null, yardages: [18] }] }
+```
+
+Rounds link to a course **by name** (`courseFor(round.course)`), not by a stored id, so card info added later applies to rounds already played, and the whole-document `saveRound` on Edit can't drop a link. Renaming a round's course changes which course it links to. 0 means unknown for par/handicap/yards; `coursePar` returns null unless all 18 pars are set.
+
 A live round starts as `{date, course, playerIds: [], roundPlayers: [], scores: {}, complete: false}`. `holes` exists only when scores came from a photo import; a hole of 0 means missing/unreadable. `team`, `greenies`, `holes` may be absent on older rounds and are handled. Players are `{name}` documents.
 
 ## Scorecard photo import
@@ -83,6 +95,8 @@ A live round starts as `{date, course, playerIds: [], roundPlayers: [], scores: 
 **Client** (`importScorecardPhoto` for the edit screen, `importScorecardPhotoLive` for Live Leaderboard):
 - Matches rows to the roster by name. If a whole photo has **no names** (typical for the back half of a folded card), `guessRowsByRowOrder` matches by row order, but only when exactly one team is still missing that half with a matching row count. Guessed rows are flagged "matched by row order — please confirm". If two teams are equally incomplete it refuses to guess and the user picks manually.
 - The review grid always shows the merged 18 holes: this photo's holes plus the player's existing ones (`mergeRowHoles` / `mergeRowHolesLive`), re-merged live when the player dropdown changes so existing data is never overwritten with zeros.
+
+**Course mode:** the same function with `mode: 'course'` uses `buildCoursePrompt` and `COURSE_SCHEMA` (`courseName`, `par`, `strokeIndex`, `tees[{name, rating, slope, yardages}]`, `notes`) and honors `holeRange`. Men's par/handicap rows when the card has both. The client (`importCourseCard`, `mergeCourseScan`) shows "the scorecard reader needs updating" if the deployed function predates course mode (its reply has no `par`).
 
 **Card layout the prompt assumes:** players as rows, hole columns, small handwritten dots above scores (ignored).
 
@@ -127,3 +141,4 @@ A live round starts as `{date, course, playerIds: [], roundPlayers: [], scores: 
 - Editing/undoing a single live import after "Add live" (fix it from Complete round or History → Edit).
 - Auto-guessing unnamed back-9 rows when two equal-size teams are both incomplete (currently manual on purpose).
 - Per-hole dot tracking (only totals are wanted).
+- Handicap index from rating/slope (data is now stored), net match play using hole handicaps, and a per-round tee override (tee is per course today).

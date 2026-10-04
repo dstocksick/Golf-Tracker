@@ -161,6 +161,7 @@ const firebaseConfig = {
 let db = null;
 let players = [];   // {id,name}
 let rounds = [];    // {id, date, playerIds, roundPlayers:[{id,name}], scores:{pid:{gross,dots}}, complete}
+let courses = [];   // {id: courseKey(name), name, par:[18], strokeIndex:[18], tees:[{name, rating, slope, yardages:[18]}], playedTee}
 let route = { view: 'live-leaderboard', params: {} };
 
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Date.now()+'-'+Math.random().toString(36).slice(2));
@@ -187,6 +188,10 @@ function subscribe(){
     rounds.sort((a,b)=> (b.date||'').localeCompare(a.date||''));
     render();
   }, ()=> setStatus('Sync error — reload to retry'));
+  db.collection('courses').onSnapshot(snap=>{
+    courses = (snap.docs||[]).filter(d=>d.exists).map(d=>({id:d.id, ...d.data()}));
+    render();
+  }, ()=> setStatus('Sync error — reload to retry'));
 }
 
 async function savePlayer(id, data){ if(!db) return; try{ await db.collection('players').doc(id).set(data); }catch(e){ setStatus('Could not save — try again'); } }
@@ -196,15 +201,69 @@ async function saveRound(id, data){ if(!db) return; try{ await db.collection('ro
 // teams at the same time can't clobber each other's writes with a whole-document overwrite.
 async function updateRoundFields(id, fields){ if(!db) return; try{ await db.collection('rounds').doc(id).update(fields); }catch(e){ setStatus('Could not save — try again'); } }
 async function deleteRoundDoc(id){ if(!db) return; try{ await db.collection('rounds').doc(id).delete(); }catch(e){ setStatus('Could not remove — try again'); } }
+async function saveCourse(id, data){ if(!db) return false; try{ await db.collection('courses').doc(id).set(data); return true; }catch(e){ setStatus('Could not save — try again'); return false; } }
+async function deleteCourseDoc(id){ if(!db) return; try{ await db.collection('courses').doc(id).delete(); }catch(e){ setStatus('Could not remove — try again'); } }
 
 function currentLiveRound(){ return rounds.find(r=>r.complete===false); }
 function finishedRounds(){ return rounds.filter(r=>r.complete!==false); }
+
+/* ---------- courses (linked to rounds by name, so past rounds pick up card info added later) ---------- */
+function courseKey(name){ return String(name||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,''); }
+function courseFor(name){ const k = courseKey(name); return k ? (courses.find(c=>c.id===k) || null) : null; }
+function coursePar(course){ return course && Array.isArray(course.par) && course.par.length===18 && course.par.every(p=>p>0) ? course.par : null; }
+function roundPar(round){ return coursePar(courseFor(round && round.course)); }
+function playedTee(course){
+  const tees = (course && course.tees) || [];
+  return tees.find(t=>t.name===course.playedTee) || tees[0] || null;
+}
+function sumArr(a){ return (a||[]).reduce((s,v)=>s+(Number(v)||0),0); }
+function toParText(n){ return n===0 ? 'E' : (n>0 ? '+'+n : '−'+Math.abs(n)); }
+// Strokes over/under par for the holes actually played (0 = not played yet); null if none.
+function holesToPar(holes, par){
+  if(!Array.isArray(holes) || !par) return null;
+  let diff = 0, n = 0;
+  holes.forEach((h,i)=>{ if(h>0){ diff += h - par[i]; n++; } });
+  return n ? diff : null;
+}
+// One-line description of a course's card info, e.g. "Par 72 · Blue 6,512 yds · 71.2/128".
+function courseSummaryText(course){
+  const par = coursePar(course);
+  if(!par) return null;
+  const parts = ['Par '+sumArr(par)];
+  const tee = playedTee(course);
+  if(tee){
+    const yds = sumArr(tee.yardages);
+    parts.push((tee.name||'Tee') + (yds ? ' '+yds.toLocaleString()+' yds' : ''));
+    if(tee.rating && tee.slope) parts.push(Number(tee.rating).toFixed(1)+'/'+tee.slope);
+  }
+  return parts.join(' · ');
+}
+// Every course name seen in rounds or saved course info, one entry per key.
+function knownCourses(){
+  const byKey = {};
+  rounds.forEach(r=>{
+    const k = courseKey(r.course);
+    if(!k) return;
+    if(!byKey[k]) byKey[k] = {key:k, name:r.course.trim(), rounds:0};
+    byKey[k].rounds++;
+  });
+  courses.forEach(c=>{
+    if(!byKey[c.id]) byKey[c.id] = {key:c.id, name:c.name||c.id, rounds:0};
+    else if(c.name) byKey[c.id].name = c.name;
+  });
+  return Object.values(byKey).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function courseNamesDatalist(){
+  const dl = el('datalist',{id:'courseNames'});
+  knownCourses().forEach(c=> dl.appendChild(el('option',{value:c.name})));
+  return dl;
+}
 
 /* ---------- routing ---------- */
 function go(view, params={}){ route = {view, params}; renderTabs(); render(); window.scrollTo(0,0); }
 
 function renderTabs(){
-  const tabs = [['live-leaderboard','Live Leaderboard'],['roster','Roster'],['new-round','Start Round'],['teams','Team Creation'],['team-results','Team Results'],['history','History'],['player-history','Player History']];
+  const tabs = [['live-leaderboard','Live Leaderboard'],['roster','Roster'],['new-round','Start Round'],['teams','Team Creation'],['team-results','Team Results'],['history','History'],['player-history','Player History'],['courses','Courses']];
   const elWrap = document.getElementById('tabs');
   elWrap.innerHTML = '';
   const live = currentLiveRound();
@@ -215,7 +274,7 @@ function renderTabs(){
       b.appendChild(document.createTextNode(' '));
       b.appendChild(el('span',{style:'display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--gold);'}));
     }
-    const group = (id==='history') ? ['history','round-summary'] : [id];
+    const group = (id==='history') ? ['history','round-summary'] : (id==='courses') ? ['courses','course-edit'] : [id];
     if(group.includes(route.view)) b.classList.add('active');
     b.onclick = ()=> go(id);
     elWrap.appendChild(b);
@@ -434,6 +493,8 @@ function render(){
     if(route.view==='history') return renderHistory(app);
     if(route.view==='player-history') return renderPlayerHistory(app);
     if(route.view==='round-summary') return renderRoundSummary(app);
+    if(route.view==='courses') return renderCourses(app);
+    if(route.view==='course-edit') return renderCourseEdit(app);
     renderRoster(app);
   }catch(err){
     app.innerHTML = '';
@@ -929,10 +990,10 @@ function renderStartRoundForm(app){
   const card = el('div',{class:'card'});
   card.appendChild(el('h3',{},'Start a round'));
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Just the basics to get going — players and teams fill in as each team\'s scorecard photo comes in on the Live Leaderboard tab.'));
-  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach'});
+  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach',list:'courseNames'});
   courseInput.value = ss.course;
   courseInput.oninput = e=> ss.course = e.target.value;
-  card.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput]));
+  card.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput, courseNamesDatalist()]));
   const dateInput = el('input',{type:'date'});
   dateInput.value = ss.date;
   dateInput.onchange = e=> ss.date = e.target.value;
@@ -1011,10 +1072,10 @@ function renderNewRound(app){
   app.appendChild(importCard);
 
   const dateCard = el('div',{class:'card'});
-  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach'});
+  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach',list:'courseNames'});
   courseInput.value = st.course || '';
   courseInput.oninput = e=> st.course = e.target.value;
-  dateCard.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput]));
+  dateCard.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput, courseNamesDatalist()]));
   const dateInput = el('input',{type:'date'});
   dateInput.value = st.date;
   dateInput.onchange = e=> st.date = e.target.value;
@@ -1369,11 +1430,14 @@ function renderTeamResults(app){
   holeCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'},'Lowest score on each team per hole. A filled score means that team won the hole (a skin).'));
   const wrap = el('div',{style:'overflow-x:auto;'});
   const hTable = el('table',{class:'results'});
-  hTable.appendChild(el('tr',{},[el('th',{},'Hole'), ...res.teams.map(t=>el('th',{},'Team '+t.num))]));
-  const totalsRow = (label, key)=> el('tr',{style:'font-weight:700;'},[el('td',{},label), ...res.teams.map(t=>el('td',{},String(t[key])))]);
+  const hPar = roundPar(round);
+  const parRange = {front:[0,9], back:[9,18], total:[0,18]};
+  hTable.appendChild(el('tr',{},[el('th',{},'Hole'), ...(hPar ? [el('th',{},'Par')] : []), ...res.teams.map(t=>el('th',{},'Team '+t.num))]));
+  const totalsRow = (label, key)=> el('tr',{style:'font-weight:700;'},[el('td',{},label), ...(hPar ? [el('td',{class:'muted'}, String(sumArr(hPar.slice(...parRange[key]))))] : []), ...res.teams.map(t=>el('td',{},String(t[key])))]);
   for(let h=0; h<18; h++){
     hTable.appendChild(el('tr',{},[
       el('td',{},String(h+1)),
+      ...(hPar ? [el('td',{class:'muted'}, String(hPar[h]))] : []),
       ...res.teams.map(t=>{
         if(!t.lows[h]) return el('td',{style:'padding-right:8px;'},[el('div',{class:'muted'},'–')]);
         const won = t.skins.includes(h+1);
@@ -1408,6 +1472,8 @@ function renderLiveLeaderboard(app){
   const headCard = el('div',{class:'card'});
   headCard.appendChild(el('h3',{style:'margin:0;'}, round.course ? `${round.date} — ${round.course}` : round.date));
   headCard.appendChild(el('div',{class:'small-note'},'Live round — scores update here as photos come in.'));
+  const liveCourseInfo = courseSummaryText(courseFor(round.course));
+  if(liveCourseInfo) headCard.appendChild(el('div',{class:'small-note'}, liveCourseInfo));
   app.appendChild(headCard);
 
   const importCard = el('div',{class:'card'});
@@ -1476,12 +1542,19 @@ function renderLiveLeaderboard(app){
   if(!ids.length){
     indCard.appendChild(el('div',{class:'empty'},'No players yet.'));
   } else {
+    const livePar = roundPar(round);
     const rows = ids.map(pid=>{
       const s = round.scores[pid] || {};
       const holes = Array.isArray(s.holes) ? s.holes : [];
       const played = holes.filter(h=>h>0);
-      return { pid, team: s.team, holesPlayed: played.length, total: played.reduce((a,b)=>a+b,0) };
-    }).sort((a,b)=> b.holesPlayed - a.holesPlayed || a.total - b.total);
+      return { pid, team: s.team, holesPlayed: played.length, total: played.reduce((a,b)=>a+b,0), toPar: holesToPar(holes, livePar) };
+    }).sort((a,b)=>{
+      if(livePar){
+        if(a.toPar===null || b.toPar===null) return (a.toPar===null) - (b.toPar===null);
+        return a.toPar - b.toPar || b.holesPlayed - a.holesPlayed;
+      }
+      return b.holesPlayed - a.holesPlayed || a.total - b.total;
+    });
     const iTable = el('table',{class:'results'});
     iTable.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Team'), el('th',{},'Holes'), el('th',{},'Score so far')]));
     const maxTeam = Math.max(0, ...rows.map(r=>r.team||0));
@@ -1501,11 +1574,13 @@ function renderLiveLeaderboard(app){
         el('td',{}, el('button',{class:'link-btn',style:'font-size:14.5px;text-align:left;',onclick:()=>openLivePlayerEditor(ls, round, r.pid)}, nameOf(round,r.pid))),
         el('td',{}, tSel),
         el('td',{}, r.holesPlayed ? `${r.holesPlayed}/18` : '–'),
-        el('td',{style:'font-weight:700;'}, r.holesPlayed ? String(r.total) : '–')
+        el('td',{style:'font-weight:700;'}, r.holesPlayed ? [String(r.total), r.toPar!==null ? el('span',{class:'muted',style:'font-weight:600;margin-left:6px;'}, toParText(r.toPar)) : null] : '–')
       ]));
     });
     indCard.appendChild(iTable);
-    indCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'},'Tap a name to edit that player\'s scores or team. Scores aren\'t directly comparable until everyone\'s played the same number of holes.'));
+    indCard.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'}, livePar
+      ? 'Tap a name to edit that player\'s scores or team. Sorted by score to par for the holes each player has in so far.'
+      : 'Tap a name to edit that player\'s scores or team. Scores aren\'t directly comparable until everyone\'s played the same number of holes. Add this course\'s card on the Courses tab to see scores to par.'));
   }
   app.appendChild(indCard);
 
@@ -1717,6 +1792,62 @@ function renderPlayerHistory(app){
   scrollWrap.appendChild(ptable);
   pCard.appendChild(scrollWrap);
   app.appendChild(pCard);
+  renderScoringVsPar(app, chronological);
+}
+
+// Per player, over every full 18 played on a course with par saved: average to par,
+// average score on par 3s/4s/5s, and how often they make birdie, par, bogey, double+.
+function scoringVsPar(rlist){
+  const stats = {};
+  rlist.forEach(r=>{
+    const par = roundPar(r);
+    if(!par) return;
+    (r.playerIds||[]).forEach(pid=>{
+      const holes = scoreOf(r,pid).holes;
+      if(!validHoles(holes)) return;
+      const st = stats[pid] = stats[pid] || { pid, name: nameOf(r,pid), rounds:0, toPar:0, byPar:{3:[0,0],4:[0,0],5:[0,0]}, birdies:0, pars:0, bogeys:0, doubles:0 };
+      st.rounds++;
+      holes.forEach((h,i)=>{
+        const diff = h - par[i];
+        st.toPar += diff;
+        if(st.byPar[par[i]]){ st.byPar[par[i]][0] += h; st.byPar[par[i]][1]++; }
+        if(diff<=-1) st.birdies++; else if(diff===0) st.pars++; else if(diff===1) st.bogeys++; else st.doubles++;
+      });
+    });
+  });
+  return Object.values(stats).sort((a,b)=> a.toPar/a.rounds - b.toPar/b.rounds);
+}
+
+function renderScoringVsPar(app, rlist){
+  const card = el('div',{class:'card'});
+  card.appendChild(el('h3',{},'Scoring vs par'));
+  const stats = scoringVsPar(rlist);
+  if(!stats.length){
+    card.appendChild(el('div',{class:'small-note'},'Add par for the courses you\'ve played on the Courses tab to see averages to par, par 3/4/5 scoring and birdies, pars and bogeys.'));
+    app.appendChild(card);
+    return;
+  }
+  const withPar = rlist.filter(r=>roundPar(r)).length;
+  card.appendChild(el('div',{class:'small-note',style:'margin-bottom:8px;'}, `From ${withPar} of ${rlist.length} rounds (courses with par saved, full 18 hole scores only). Par 3/4/5 columns are average strokes on those holes.`));
+  const wrap = el('div',{style:'overflow-x:auto;'});
+  const t = el('table',{class:'results',style:'white-space:nowrap;font-size:13px;'});
+  const th = txt=> el('th',{style:'padding:0 6px 6px 0;'}, txt);
+  const td = (txt, style)=> el('td',{style:'padding:6px 6px 6px 0;'+(style||'')}, txt);
+  t.appendChild(el('tr',{},[th('Player'), th('Rds'), th('Avg'), th('Par 3'), th('Par 4'), th('Par 5'), th('Birdie+'), th('Par'), th('Bogey'), th('Dbl+')]));
+  const avg = ([sum,n])=> n ? (sum/n).toFixed(2) : '–';
+  const pct = (n, st)=> Math.round(100*n/(st.rounds*18))+'%';
+  stats.forEach(st=>{
+    const avgToPar = st.toPar/st.rounds;
+    t.appendChild(el('tr',{},[
+      td(st.name, 'font-weight:600;'), td(String(st.rounds)),
+      td((avgToPar>0?'+':avgToPar<0?'−':'') + Math.abs(avgToPar).toFixed(1), 'font-weight:700;'),
+      td(avg(st.byPar[3])), td(avg(st.byPar[4])), td(avg(st.byPar[5])),
+      td(pct(st.birdies, st)), td(pct(st.pars, st)), td(pct(st.bogeys, st)), td(pct(st.doubles, st))
+    ]));
+  });
+  wrap.appendChild(t);
+  card.appendChild(wrap);
+  app.appendChild(card);
 }
 
 function renderRoundSummary(app){
@@ -1729,10 +1860,17 @@ function renderRoundSummary(app){
     el('h3',{style:'margin:0;'}, round.course ? `${round.date} — ${round.course}` : round.date),
     el('button',{class:'btn ghost small',onclick:()=>editRound(round)},'Edit scores')
   ]));
+  const sumCourseInfo = courseSummaryText(courseFor(round.course));
+  if(sumCourseInfo) head.appendChild(el('div',{class:'small-note',style:'margin-bottom:6px;'}, sumCourseInfo));
+  const sumPar = roundPar(round);
+  // To par only for a full 18; partial hole data would understate it.
+  const fullToPar = pid=>{ const h = scoreOf(round,pid).holes; return (sumPar && validHoles(h)) ? holesToPar(h, sumPar) : null; };
+  const showToPar = round.playerIds.some(pid=>fullToPar(pid)!==null);
   const scoreTable = el('table',{class:'results'});
-  scoreTable.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Gross'), el('th',{},'Dots')]));
+  scoreTable.appendChild(el('tr',{},[el('th',{},'Player'), el('th',{},'Gross'), ...(showToPar ? [el('th',{},'To par')] : []), el('th',{},'Dots')]));
   round.playerIds.slice().sort((a,b)=> (scoreOf(round,a).gross)-(scoreOf(round,b).gross)).forEach(pid=>{
-    scoreTable.appendChild(el('tr',{},[el('td',{},nameOf(round,pid)), el('td',{},String(scoreOf(round,pid).gross)), el('td',{},String(scoreOf(round,pid).dots))]));
+    const tp = fullToPar(pid);
+    scoreTable.appendChild(el('tr',{},[el('td',{},nameOf(round,pid)), el('td',{},String(scoreOf(round,pid).gross)), ...(showToPar ? [el('td',{}, tp===null ? '–' : toParText(tp))] : []), el('td',{},String(scoreOf(round,pid).dots))]));
   });
   head.appendChild(scoreTable);
   app.appendChild(head);
@@ -1773,6 +1911,255 @@ function renderRoundSummary(app){
     ]));
   } else {
     app.appendChild(el('button',{class:'btn danger',style:'width:100%;margin-top:6px;',onclick:()=>{ window.__pendingConfirm.add(delKey); render(); }},'Delete round'));
+  }
+}
+
+/* ---------- courses tab ---------- */
+function renderCourses(app){
+  const addCard = el('div',{class:'card'});
+  addCard.appendChild(el('h3',{},'Courses'));
+  addCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Par, hole handicaps, tees and yardages for each course. Rounds link to a course by name, so card info added here also applies to rounds already played.'));
+  const inp = el('input',{type:'text',placeholder:'Add a course not played yet'});
+  addCard.appendChild(el('div',{class:'row',style:'gap:8px;'},[
+    inp,
+    el('button',{class:'btn',onclick:()=>{
+      const name = inp.value.trim();
+      if(!courseKey(name)) return;
+      openCourseEditor(courseKey(name), name);
+    }},'Add')
+  ]));
+  app.appendChild(addCard);
+
+  const list = knownCourses();
+  const listCard = el('div',{class:'card'});
+  if(!list.length){
+    listCard.appendChild(el('div',{class:'empty'},'No courses yet.'));
+  } else {
+    list.forEach(c=>{
+      const info = courseSummaryText(courseFor(c.name));
+      listCard.appendChild(el('div',{class:'player-line round-item',onclick:()=>openCourseEditor(c.key, c.name)},[
+        el('div',{},[
+          el('div',{style:'font-weight:600;'}, c.name),
+          el('div',{class:'muted'}, (c.rounds ? `${c.rounds} round${c.rounds===1?'':'s'}` : 'No rounds yet') + ' · ' + (info || 'No card info yet'))
+        ]),
+        el('span',{class:'muted'},'›')
+      ]));
+    });
+  }
+  app.appendChild(listCard);
+}
+
+function blankCourseDraft(name){
+  return { name, par: Array(18).fill(0), strokeIndex: Array(18).fill(0), tees: [], playedTee: '' };
+}
+
+function openCourseEditor(key, name){
+  const saved = courses.find(c=>c.id===key);
+  const draft = saved ? JSON.parse(JSON.stringify({ ...blankCourseDraft(name), ...saved })) : blankCourseDraft(name);
+  draft.par = eighteenHoles(draft.par);
+  draft.strokeIndex = eighteenHoles(draft.strokeIndex);
+  draft.tees = (draft.tees||[]).map(t=>({ name: t.name||'', rating: t.rating||null, slope: t.slope||null, yardages: eighteenHoles(t.yardages) }));
+  delete draft.id;
+  const showTee = Math.max(0, draft.tees.findIndex(t=>t.name===draft.playedTee));
+  window.__courseEditState = { key, draft, showTee, holeRange:'front', importStatus:null, importError:null, notes:'', error:null, message:null, exists: !!saved };
+  go('course-edit');
+}
+
+// Copies one photo's worth of card info into the draft; only non-zero reads overwrite,
+// so a folded card's two halves fill in the same draft without wiping each other.
+function mergeCourseScan(draft, json, range){
+  const put = (arr, vals)=>{ for(let i=0;i<range.count;i++){ const v = Number(vals && vals[i])||0; if(v>0) arr[range.startIdx+i] = v; } };
+  put(draft.par, json.par);
+  put(draft.strokeIndex, json.strokeIndex);
+  (json.tees||[]).forEach(t=>{
+    const name = String(t.name||'').trim() || 'Tee '+(draft.tees.length+1);
+    let tee = draft.tees.find(x=>x.name.trim().toLowerCase()===name.toLowerCase());
+    if(!tee){ tee = { name, rating:null, slope:null, yardages: Array(18).fill(0) }; draft.tees.push(tee); }
+    put(tee.yardages, t.yardages);
+    if(Number(t.rating)>0) tee.rating = Number(t.rating);
+    if(Number(t.slope)>0) tee.slope = Number(t.slope);
+  });
+}
+
+async function importCourseCard(file, cs){
+  cs.importStatus = 'reading';
+  cs.importError = null;
+  cs.message = null;
+  render();
+  try{
+    const base64 = await fileToBase64(file);
+    const range = HOLE_RANGE_INFO[cs.holeRange] || HOLE_RANGE_INFO.full;
+    const resp = await fetch(PARSE_SCORECARD_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({imageBase64: base64, mimeType: file.type||'image/jpeg', holeRange: cs.holeRange, mode:'course'})
+    });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error((json && json.error && (json.error.message||json.error))||'Import failed');
+    if(!Array.isArray(json.par)) throw new Error('the scorecard reader needs updating before it can read course info.');
+    mergeCourseScan(cs.draft, json, range);
+    if(cs.draft.tees.length && !cs.draft.tees.some(t=>t.name===cs.draft.playedTee)) cs.showTee = 0;
+    cs.notes = json.notes || '';
+    cs.message = 'Card read — check everything below, pick the tees you played, then Save.';
+    cs.importStatus = null;
+  }catch(e){
+    cs.importStatus = null;
+    cs.importError = 'Could not read that photo — ' + (e.message||'try again.');
+  }
+  render();
+}
+
+function renderCourseEdit(app){
+  const cs = window.__courseEditState;
+  if(!cs){ go('courses'); return; }
+  const d = cs.draft;
+  const playedHere = rounds.filter(r=>courseKey(r.course)===cs.key).map(r=>r.date).sort();
+
+  const head = el('div',{class:'card'});
+  head.appendChild(el('div',{class:'row'},[
+    el('h3',{style:'margin:0;'}, d.name),
+    el('button',{class:'btn ghost small',onclick:()=>{ window.__courseEditState = null; go('courses'); }},'Back')
+  ]));
+  head.appendChild(el('div',{class:'small-note'}, playedHere.length ? 'Rounds here: '+playedHere.join(', ') : 'No rounds here yet.'));
+  app.appendChild(head);
+
+  // Scan
+  const scan = el('div',{class:'card'});
+  scan.appendChild(el('h3',{style:'margin:0 0 8px;'},'Read from scorecard photo'));
+  scan.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Photograph the printed side of a blank or used card. It reads par, handicap, every tee\'s yardages and rating/slope if printed. If the card is folded, take one photo per half.'));
+  scan.appendChild(el('div',{class:'field',style:'margin-bottom:10px;'},[
+    el('label',{},'This photo shows'),
+    el('div',{style:'display:flex;gap:6px;'}, Object.entries(HOLE_RANGE_INFO).map(([key,info])=>
+      el('button',{type:'button', class: cs.holeRange===key ? 'btn small' : 'btn ghost small', style:'flex:1;', onclick:()=>{ cs.holeRange = key; render(); }},
+        info.label.replace(' (holes 1–9)','').replace(' (holes 10–18)',''))
+    ))
+  ]));
+  const hiddenInputStyle = 'position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;';
+  const cameraInput = el('input',{type:'file',accept:'image/*',capture:'environment',style:hiddenInputStyle});
+  const fileInput = el('input',{type:'file',accept:'image/*',style:hiddenInputStyle});
+  const onPick = e=>{ const f = e.target.files && e.target.files[0]; e.target.value=''; if(f) importCourseCard(f, cs); };
+  cameraInput.onchange = onPick;
+  fileInput.onchange = onPick;
+  scan.appendChild(cameraInput);
+  scan.appendChild(fileInput);
+  scan.appendChild(el('div',{style:'display:flex;gap:10px;'},[
+    el('button',{class:'btn',style:'flex:1;',disabled: cs.importStatus==='reading',onclick:()=>cameraInput.click()},'Take photo'),
+    el('button',{class:'btn secondary',style:'flex:1;',disabled: cs.importStatus==='reading',onclick:()=>fileInput.click()},'Choose photo')
+  ]));
+  if(cs.importStatus==='reading') scan.appendChild(el('div',{class:'small-note',style:'margin-top:8px;'},'Reading scorecard…'));
+  if(cs.importError) scan.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-top:8px;'}, cs.importError));
+  if(cs.message) scan.appendChild(el('div',{style:'color:var(--fairway);font-weight:600;font-size:13.5px;margin-top:8px;'}, cs.message));
+  if(cs.notes) scan.appendChild(el('div',{class:'small-note',style:'color:var(--gold);margin-top:6px;'},'AI notes: '+cs.notes));
+  app.appendChild(scan);
+
+  // Tees
+  const teeCard = el('div',{class:'card'});
+  teeCard.appendChild(el('h3',{style:'margin:0 0 4px;'},'Tees'));
+  teeCard.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Pick the tees your group plays. Their yardage, rating and slope are the ones used for stats.'));
+  if(!d.tees.length) teeCard.appendChild(el('div',{class:'muted',style:'margin-bottom:10px;'},'No tees yet — read a card or add one.'));
+  d.tees.forEach((t, idx)=>{
+    const block = el('div',{class:'team-block'});
+    const radio = el('input',{type:'radio',name:'playedTee',style:'width:auto;margin:0;'});
+    radio.checked = !!t.name && t.name===d.playedTee;
+    radio.onchange = ()=>{ d.playedTee = t.name; cs.showTee = idx; render(); };
+    const nameIn = el('input',{type:'text',placeholder:'Tee name (e.g. Blue)'});
+    nameIn.value = t.name;
+    nameIn.onchange = e=>{ const was = t.name; t.name = e.target.value.trim(); if(d.playedTee===was) d.playedTee = t.name; render(); };
+    block.appendChild(el('div',{style:'display:flex;align-items:center;gap:8px;margin-bottom:8px;'},[
+      el('label',{style:'display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer;'},[radio,'We play']),
+      nameIn,
+      el('button',{class:'link-btn',style:'color:var(--danger);white-space:nowrap;',onclick:()=>{
+        d.tees.splice(idx,1);
+        if(d.playedTee===t.name) d.playedTee = '';
+        cs.showTee = 0;
+        render();
+      }},'Remove')
+    ]));
+    const ratingIn = el('input',{type:'number',inputmode:'decimal',step:'0.1',placeholder:'e.g. 70.4'});
+    ratingIn.value = t.rating || '';
+    ratingIn.oninput = e=>{ t.rating = Number(e.target.value)||null; };
+    const slopeIn = el('input',{type:'number',inputmode:'numeric',placeholder:'e.g. 128'});
+    slopeIn.value = t.slope || '';
+    slopeIn.oninput = e=>{ t.slope = Math.round(Number(e.target.value))||null; };
+    const yds = sumArr(t.yardages);
+    block.appendChild(el('div',{style:'display:flex;gap:8px;align-items:flex-end;'},[
+      el('div',{class:'field',style:'flex:1;margin:0;'},[el('label',{},'Rating'), ratingIn]),
+      el('div',{class:'field',style:'flex:1;margin:0;'},[el('label',{},'Slope'), slopeIn]),
+      el('div',{class:'muted',style:'flex:1;padding-bottom:10px;text-align:right;'}, yds ? yds.toLocaleString()+' yds' : '')
+    ]));
+    teeCard.appendChild(block);
+  });
+  teeCard.appendChild(el('button',{class:'btn ghost small',onclick:()=>{ d.tees.push({ name:'', rating:null, slope:null, yardages:Array(18).fill(0) }); cs.showTee = d.tees.length-1; render(); }},'Add a tee'));
+  app.appendChild(teeCard);
+
+  // Holes
+  const holeCard = el('div',{class:'card'});
+  holeCard.appendChild(el('h3',{style:'margin:0 0 4px;'},'Holes'));
+  if(cs.showTee >= d.tees.length) cs.showTee = 0;
+  const yTee = d.tees[cs.showTee] || null;
+  if(d.tees.length > 1){
+    const sel = el('select',{style:'width:auto;'});
+    d.tees.forEach((t,i)=>{ const o = el('option',{value:i}, t.name||'Tee '+(i+1)); if(i===cs.showTee) o.selected = true; sel.appendChild(o); });
+    sel.onchange = e=>{ cs.showTee = Number(e.target.value); render(); };
+    holeCard.appendChild(el('div',{class:'field',style:'display:flex;align-items:center;gap:8px;margin:6px 0 10px;'},[el('label',{style:'margin:0;'},'Yards for'), sel]));
+  }
+  const grid = 'display:grid;grid-template-columns:40px repeat(3,minmax(0,1fr));gap:6px;align-items:center;';
+  holeCard.appendChild(el('div',{style:grid+'padding:4px 0;'},[
+    el('div',{class:'colhead',style:'font-size:10.5px;font-weight:700;opacity:.55;'},'HOLE'),
+    el('div',{class:'colhead',style:'font-size:10.5px;font-weight:700;opacity:.55;text-align:center;'},'PAR'),
+    el('div',{class:'colhead',style:'font-size:10.5px;font-weight:700;opacity:.55;text-align:center;'},'HCP'),
+    el('div',{class:'colhead',style:'font-size:10.5px;font-weight:700;opacity:.55;text-align:center;'}, yTee ? 'YARDS' : '')
+  ]));
+  const totals = {};
+  const totalRow = (label, from, to)=>{
+    const parSpan = el('span',{}), ydSpan = el('span',{});
+    totals[label] = ()=>{
+      parSpan.textContent = String(sumArr(d.par.slice(from,to)) || '–');
+      ydSpan.textContent = yTee ? String(sumArr(yTee.yardages.slice(from,to)) || '–') : '';
+    };
+    return el('div',{style:grid+'padding:6px 0;font-weight:700;border-top:1.5px solid var(--line);margin-bottom:4px;'},[
+      el('div',{style:'font-size:12px;'},label), el('div',{style:'text-align:center;'},parSpan), el('div',{}), el('div',{style:'text-align:center;'},ydSpan)
+    ]);
+  };
+  const refresh = ()=> Object.values(totals).forEach(f=>f());
+  const numIn = (arr, i)=>{
+    const inp = el('input',{type:'number',inputmode:'numeric',min:'0',class:'cell-input',style:'padding:6px 2px;'});
+    inp.value = arr[i] || '';
+    inp.oninput = e=>{ arr[i] = Math.max(0, Math.round(Number(e.target.value))||0); refresh(); };
+    return inp;
+  };
+  for(let i=0;i<18;i++){
+    holeCard.appendChild(el('div',{style:grid+'padding:2px 0;'},[
+      el('div',{style:'font-weight:700;font-size:13px;'}, String(i+1)),
+      numIn(d.par, i),
+      numIn(d.strokeIndex, i),
+      yTee ? numIn(yTee.yardages, i) : el('div',{})
+    ]));
+    if(i===8) holeCard.appendChild(totalRow('OUT',0,9));
+  }
+  holeCard.appendChild(totalRow('IN',9,18));
+  holeCard.appendChild(totalRow('TOTAL',0,18));
+  refresh();
+  app.appendChild(holeCard);
+
+  if(cs.error) app.appendChild(el('div',{style:'color:var(--danger);font-weight:600;font-size:13.5px;margin-bottom:8px;text-align:center;'}, cs.error));
+  app.appendChild(el('button',{class:'btn',style:'width:100%;',onclick: async()=>{
+    cs.error = null;
+    const tees = d.tees.filter(t=>t.name.trim());
+    if(tees.length && !tees.some(t=>t.name===d.playedTee)){ cs.error = 'Pick the tees your group plays.'; render(); return; }
+    const si = d.strokeIndex.filter(v=>v>0);
+    if(si.some(v=>v>18) || new Set(si).size!==si.length){ cs.error = 'Each hole handicap should be a different number from 1 to 18.'; render(); return; }
+    const data = {
+      name: d.name,
+      par: d.par.map(v=>Number(v)||0),
+      strokeIndex: d.strokeIndex.map(v=>Number(v)||0),
+      tees: tees.map(t=>({ name: t.name.trim(), rating: Number(t.rating)||null, slope: Number(t.slope)||null, yardages: t.yardages.map(v=>Number(v)||0) })),
+      playedTee: d.playedTee || ''
+    };
+    if(await saveCourse(cs.key, data)){ window.__courseEditState = null; go('courses'); }
+  }},'Save course'));
+  if(cs.exists){
+    app.appendChild(el('div',{style:'text-align:center;margin-top:12px;'}, confirmAction('course:'+cs.key, 'Delete card info', async()=>{ await deleteCourseDoc(cs.key); window.__courseEditState = null; go('courses'); }, 'Delete card info?')));
   }
 }
 

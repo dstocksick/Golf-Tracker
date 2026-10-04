@@ -28,6 +28,30 @@ const RESPONSE_SCHEMA = {
   required: ["players"],
 };
 
+const COURSE_SCHEMA = {
+  type: "object",
+  properties: {
+    courseName: {type: "string", nullable: true},
+    par: {type: "array", items: {type: "integer"}},
+    strokeIndex: {type: "array", items: {type: "integer"}},
+    tees: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: {type: "string"},
+          rating: {type: "number", nullable: true},
+          slope: {type: "integer", nullable: true},
+          yardages: {type: "array", items: {type: "integer"}},
+        },
+        required: ["name", "yardages"],
+      },
+    },
+    notes: {type: "string"},
+  },
+  required: ["par", "strokeIndex", "tees"],
+};
+
 const HOLE_RANGES = {
   front: {startHole: 1, count: 9, label: "holes 1 through 9 (the front nine)"},
   back: {startHole: 10, count: 9, label: "holes 10 through 18 (the back nine)"},
@@ -58,6 +82,24 @@ Also return a top-level "notes" string describing anything ambiguous, illegible,
 Respond with JSON matching the given schema only.`;
 }
 
+function buildCoursePrompt(range) {
+  const {startHole, count, label} = range;
+  const endHole = startHole + count - 1;
+  return `You are reading a photo of a golf course's printed scorecard to capture the course information, not player scores. This photo shows ${label} — physical scorecards are often folded in half, so you may only be looking at one half of the card. Read only holes ${startHole} through ${endHole} (${count} holes). Ignore any OUT, IN or TOTAL subtotal columns, and ignore anything handwritten.
+
+Work column by column: first locate the printed hole-number header row and the horizontal position of each hole's column, then read every printed row by lining each value up with its hole's column.
+
+Return:
+- courseName: the course name printed on the card, or null if none is visible.
+- par: exactly ${count} integers, the par for hole ${startHole} through hole ${endHole}. If the card has separate men's and women's par rows, use the men's row and mention it in notes.
+- strokeIndex: exactly ${count} integers from the row labelled Handicap, HCP, HDCP or Stroke Index, for hole ${startHole} through hole ${endHole}. If there are separate men's and women's handicap rows, use the men's row and mention it in notes. Use 0 for any you can't read.
+- tees: one entry per printed yardage row (each tee box), top to bottom as printed. name is the tee's name or colour as printed (for example Blue, White, Gold). yardages is exactly ${count} integers for hole ${startHole} through hole ${endHole}. rating and slope are that tee's course rating (a decimal such as 70.4) and slope (an integer such as 128) if printed anywhere on the card, else null.
+
+Use 0 for any value that is illegible or missing and say which in notes. Also use notes for anything a human should double check.
+
+Respond with JSON matching the given schema only.`;
+}
+
 exports.parseScorecard = onRequest(
     {secrets: [geminiApiKey], cors: true, memory: "512MiB", timeoutSeconds: 60},
     async (req, res) => {
@@ -66,24 +108,28 @@ exports.parseScorecard = onRequest(
         return;
       }
 
-      const {imageBase64, mimeType, rosterNames, model, temperature, holeRange} = req.body || {};
+      const {imageBase64, mimeType, rosterNames, model, temperature, holeRange, mode} = req.body || {};
       if (!imageBase64) {
         res.status(400).json({error: "imageBase64 is required"});
         return;
       }
       const range = HOLE_RANGES[holeRange] || HOLE_RANGES.full;
+      const isCourse = mode === "course";
+      const prompt = isCourse ?
+        buildCoursePrompt(range) :
+        buildPrompt(Array.isArray(rosterNames) ? rosterNames : [], range);
 
       const modelToUse = model || GEMINI_MODEL;
       const body = {
         contents: [{
           parts: [
-            {text: buildPrompt(Array.isArray(rosterNames) ? rosterNames : [], range)},
+            {text: prompt},
             {inline_data: {mime_type: mimeType || "image/jpeg", data: imageBase64}},
           ],
         }],
         generationConfig: {
           responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
+          responseSchema: isCourse ? COURSE_SCHEMA : RESPONSE_SCHEMA,
           temperature: typeof temperature === "number" ? temperature : 0,
         },
       };
