@@ -1,6 +1,6 @@
 # Working on The 2026 Lake Open (golf tracker)
 
-Read `PROJECT_BRIEF.md` first — it has the architecture, features, game rules, data model, dev workflow and gotchas. Current release: v1.1 (tag `v1.1`).
+Read `PROJECT_BRIEF.md` first — it has the architecture, features, game rules, data model, dev workflow and gotchas. Current release: v1.2 (tag `v1.2`).
 
 ## Rules for working here
 
