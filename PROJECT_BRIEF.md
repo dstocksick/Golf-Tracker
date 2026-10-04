@@ -138,7 +138,8 @@ A live round starts as `{date, course, playerIds: [], roundPlayers: [], scores: 
 - Carryover for tied skin holes (explicitly not wanted so far); a tiebreaker for tied team scores (currently "Tie", no refund).
 - Team betting on the Round Summary page (it only has dot payouts).
 - Live hole-by-hole table and live betting preview on Live Leaderboard (only team score/skins and the individual list are shown).
-- Editing/undoing a single live import after "Add live" (fix it from Complete round or History → Edit).
+- Undoing a whole live import after "Add live" (individual players can be edited by tapping their name on Live Leaderboard).
 - Auto-guessing unnamed back-9 rows when two equal-size teams are both incomplete (currently manual on purpose).
 - Per-hole dot tracking (only totals are wanted).
 - Handicap index from rating/slope (data is now stored), net match play using hole handicaps, and a per-round tee override (tee is per course today).
+- 27-hole courses: a course holding named nines, with the round picking first and second nine. Workaround today: save each combination as its own course (e.g. "Lakeside – Red/White"), photograph the first nine as Front 9 and the second as Back 9; per-nine handicaps (1–9 or odd/even) may need renumbering to a distinct 1–18 to save.
