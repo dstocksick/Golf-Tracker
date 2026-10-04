@@ -20,7 +20,7 @@ Firebase is on the **Blaze** plan (required for Cloud Functions; cost stays near
 
 ## How a round works (v1.1)
 
-1. **Start Round** tab — only course and date. Creates a shared round in Firestore with `complete: false` and jumps to Live Leaderboard. If a round is already in progress the tab shows "Round in progress" with a link instead (only one live round at a time).
+1. **Start Round** tab — only course and date. The course box has tappable buttons for every known course (card on file first, with par); typing filters them or enters a new name, and a note says whether a card is on file. A typed name that matches a known course (any capitalization) is saved with the known spelling. Creates a shared round in Firestore with `complete: false` and jumps to Live Leaderboard. If a round is already in progress the tab shows "Round in progress" with a link instead (only one live round at a time).
 2. **Live Leaderboard** tab (gold dot on the tab while a round is live) — anyone with the link can view it on their own phone, and anyone can add photos:
    - "This photo shows" selector: Front 9 / Back 9 / Full 18 (physical cards fold, so one card is usually two photos). Smart default: Front 9 when nothing is in, Back 9 when a player has front 9 but not back 9.
    - Take photo / Choose photo → Cloud Function reads gross scores → editable review grid (player match dropdown, 18 hole inputs, live Front 9 / Back 9 / Total) → "Add live".

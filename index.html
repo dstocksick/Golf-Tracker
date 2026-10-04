@@ -1001,10 +1001,34 @@ function renderStartRoundForm(app){
   const card = el('div',{class:'card'});
   card.appendChild(el('h3',{},'Start a round'));
   card.appendChild(el('div',{class:'small-note',style:'margin-bottom:10px;'},'Just the basics to get going — players and teams fill in as each team\'s scorecard photo comes in on the Live Leaderboard tab.'));
-  const courseInput = el('input',{type:'text',placeholder:'e.g. Pebble Beach',list:'courseNames'});
+  // Tappable known courses (card on file first) plus free typing for a new name. Typing
+  // only refreshes the buttons and note below, so the phone keyboard stays up.
+  const courseInput = el('input',{type:'text',placeholder:'Pick below or type a course name',autocomplete:'off'});
   courseInput.value = ss.course;
-  courseInput.oninput = e=> ss.course = e.target.value;
-  card.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput, courseNamesDatalist()]));
+  const chipsWrap = el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;'});
+  const note = el('div',{class:'small-note',style:'margin-top:8px;'});
+  const known = knownCourses().map(c=>({ ...c, info: courseSummaryText(courseFor(c.name)) }))
+    .sort((a,b)=> (b.info?1:0)-(a.info?1:0) || a.name.localeCompare(b.name));
+  const refreshPicker = ()=>{
+    const key = courseKey(ss.course);
+    const q = (ss.course||'').trim().toLowerCase();
+    chipsWrap.innerHTML = '';
+    known.filter(c=> !q || c.key===key || c.name.toLowerCase().includes(q)).forEach(c=>{
+      const picked = c.key===key;
+      chipsWrap.appendChild(el('button',{type:'button',class: picked ? 'btn small' : 'btn ghost small',style:'text-align:left;',onclick:()=>{
+        ss.course = picked ? '' : c.name;
+        courseInput.value = ss.course;
+        refreshPicker();
+      }}, [c.name, c.info ? el('span',{style:'opacity:.65;font-weight:500;margin-left:6px;'}, 'Par '+sumArr(coursePar(courseFor(c.name)))) : null]));
+    });
+    const info = key ? courseSummaryText(courseFor(ss.course)) : null;
+    note.textContent = !key ? '' : (info ? '✓ Card on file: '+info : 'No card for this course yet — you can add it later in Courses.');
+    note.style.color = info ? 'var(--fairway)' : '';
+    note.style.opacity = info ? '1' : '';
+  };
+  courseInput.oninput = e=>{ ss.course = e.target.value; refreshPicker(); };
+  refreshPicker();
+  card.appendChild(el('div',{class:'field'},[el('label',{},'Course'), courseInput, chipsWrap, note]));
   const dateInput = el('input',{type:'date'});
   dateInput.value = ss.date;
   dateInput.onchange = e=> ss.date = e.target.value;
@@ -1016,7 +1040,10 @@ function renderStartRoundForm(app){
     if(currentLiveRound()){ ss.error = 'A round is already in progress.'; render(); return; }
     ss.error = null;
     const roundId = uid();
-    await saveRound(roundId, { date: ss.date, course: (ss.course||'').trim(), playerIds:[], roundPlayers:[], scores:{}, complete:false });
+    // Use the saved spelling when the typed name matches a known course.
+    const match = knownCourses().find(c=>c.key===courseKey(ss.course));
+    const courseName = match ? match.name : (ss.course||'').trim();
+    await saveRound(roundId, { date: ss.date, course: courseName, playerIds:[], roundPlayers:[], scores:{}, complete:false });
     window.__startRoundState = null;
     go('live-leaderboard');
   }},'Start round'));
