@@ -119,6 +119,16 @@ details.card[open]>summary{margin-bottom:10px;}
 table.results{width:100%;border-collapse:collapse;font-size:14px;}
 table.results th{text-align:left;font-size:11.5px;opacity:.6;font-weight:700;padding-bottom:6px;}
 table.results td{padding:6px 0;border-top:1px solid var(--line);}
+table.sc{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px;text-align:center;margin-bottom:12px;}
+table.sc th,table.sc td{padding:5px 0;border-top:1px solid var(--line);}
+table.sc tr:first-child th,table.sc tr:first-child td{border-top:none;}
+table.sc .sc-label{text-align:left;font-size:11px;opacity:.6;font-weight:700;width:36px;}
+table.sc .sc-tot{font-weight:700;width:32px;}
+.sc-mark{display:inline-flex;align-items:center;justify-content:center;width:21px;height:21px;box-sizing:border-box;font-weight:700;line-height:1;}
+.sc-eagle,.sc-birdie{border:1.5px solid currentColor;border-radius:50%;color:var(--fairway);}
+.sc-eagle{outline:1.5px solid currentColor;outline-offset:1.5px;}
+.sc-bogey,.sc-double{border:1.5px solid currentColor;}
+.sc-double{outline:1.5px solid currentColor;outline-offset:1.5px;}
 .money-pos{color:var(--fairway);font-weight:700;}
 .money-neg{color:var(--danger);font-weight:700;}
 .settlement-list{margin:6px 0 14px;padding-left:0;list-style:none;}
@@ -274,7 +284,7 @@ function renderTabs(){
       b.appendChild(document.createTextNode(' '));
       b.appendChild(el('span',{style:'display:inline-block;width:7px;height:7px;border-radius:999px;background:var(--gold);'}));
     }
-    const group = (id==='history') ? ['history','round-summary'] : (id==='courses') ? ['courses','course-edit'] : [id];
+    const group = (id==='history') ? ['history','round-summary','player-round'] : (id==='courses') ? ['courses','course-edit'] : [id];
     if(group.includes(route.view)) b.classList.add('active');
     b.onclick = ()=> go(id);
     elWrap.appendChild(b);
@@ -493,6 +503,7 @@ function render(){
     if(route.view==='history') return renderHistory(app);
     if(route.view==='player-history') return renderPlayerHistory(app);
     if(route.view==='round-summary') return renderRoundSummary(app);
+    if(route.view==='player-round') return renderPlayerRound(app);
     if(route.view==='courses') return renderCourses(app);
     if(route.view==='course-edit') return renderCourseEdit(app);
     renderRoster(app);
@@ -1729,7 +1740,10 @@ function renderHistory(app){
         (r.playerIds||[]).slice().sort((a,b)=>(scoreOf(r,a).gross)-(scoreOf(r,b).gross)).forEach(pid=>{
           const t = scoreOf(r,pid).team;
           const teamCell = el('td',{},[t ? 'Team '+t : '–', (t && t===winnerNum) ? el('span',{class:'badge complete',style:'margin-left:6px;'},'Winner') : null]);
-          table.appendChild(el('tr',{},[el('td',{},nameOf(r,pid)), ...(hasTeams ? [teamCell] : []), el('td',{},String(scoreOf(r,pid).gross)), el('td',{},String(scoreOf(r,pid).dots))]));
+          const nameCell = Array.isArray(scoreOf(r,pid).holes)
+            ? el('button',{class:'link-btn',style:'font-size:inherit;text-align:left;',onclick:(e)=>{ e.stopPropagation(); go('player-round',{id:r.id, pid}); }}, nameOf(r,pid))
+            : nameOf(r,pid);
+          table.appendChild(el('tr',{},[el('td',{},nameCell), ...(hasTeams ? [teamCell] : []), el('td',{},String(scoreOf(r,pid).gross)), el('td',{},String(scoreOf(r,pid).dots))]));
         });
         card.appendChild(table);
         if(resultText) card.appendChild(el('div',{style:'margin-top:8px;font-weight:600;font-size:14px;'}, resultText));
@@ -1847,6 +1861,70 @@ function renderScoringVsPar(app, rlist){
   });
   wrap.appendChild(t);
   card.appendChild(wrap);
+  app.appendChild(card);
+}
+
+/* ---------- one player's round, hole by hole vs par (from History) ---------- */
+// Usual scorecard marks: double circle eagle or better, circle birdie, square bogey,
+// double square double bogey or worse.
+function scoreMarkClass(score, par){
+  const d = score - par;
+  if(d<=-2) return 'sc-eagle';
+  if(d===-1) return 'sc-birdie';
+  if(d===1) return 'sc-bogey';
+  if(d>=2) return 'sc-double';
+  return '';
+}
+
+function renderPlayerRound(app){
+  const round = rounds.find(r=>r.id===route.params.id);
+  const pid = route.params.pid;
+  if(!round || !(round.playerIds||[]).includes(pid)){ app.appendChild(el('div',{class:'card'},'Round not found.')); return; }
+  const s = scoreOf(round,pid);
+  const holes = eighteenHoles(s.holes);
+  const par = roundPar(round);
+
+  const card = el('div',{class:'card'});
+  card.appendChild(el('button',{class:'link-btn',style:'margin-bottom:6px;',onclick:()=>go('history')},'‹ History'));
+  card.appendChild(el('h3',{style:'margin:0;'}, nameOf(round,pid)));
+  card.appendChild(el('div',{class:'muted',style:'margin-bottom:6px;'}, round.course ? `${round.date} — ${round.course}` : round.date));
+  const courseInfo = courseSummaryText(courseFor(round.course));
+  if(courseInfo) card.appendChild(el('div',{class:'small-note',style:'margin:0 0 8px;'}, courseInfo));
+
+  const played = holes.filter(h=>h>0).length;
+  const toPar = par ? holesToPar(holes, par) : null;
+  card.appendChild(el('div',{style:'font-weight:700;font-size:15px;margin:6px 0 12px;'},
+    `Gross ${sumArr(holes)}` + (toPar!==null ? ` (${toParText(toPar)}${played<18 ? ' through '+played : ''})` : '')));
+
+  const nine = (start, label)=>{
+    const idx = Array.from({length:9}, (_,i)=>start+i);
+    const t = el('table',{class:'sc'});
+    t.appendChild(el('tr',{},[el('th',{class:'sc-label'},'Hole'), ...idx.map(i=>el('th',{style:'font-size:11px;opacity:.6;'}, String(i+1))), el('th',{class:'sc-tot',style:'font-size:11px;opacity:.6;'}, label)]));
+    if(par) t.appendChild(el('tr',{style:'opacity:.7;'},[el('td',{class:'sc-label'},'Par'), ...idx.map(i=>el('td',{}, String(par[i]))), el('td',{class:'sc-tot'}, String(idx.reduce((a,i)=>a+par[i],0)))]));
+    t.appendChild(el('tr',{},[
+      el('td',{class:'sc-label'},'Score'),
+      ...idx.map(i=>{
+        const h = holes[i];
+        if(!h) return el('td',{class:'muted'},'–');
+        return el('td',{}, el('span',{class:'sc-mark '+(par ? scoreMarkClass(h, par[i]) : '')}, String(h)));
+      }),
+      el('td',{class:'sc-tot'}, String(idx.reduce((a,i)=>a+holes[i],0)))
+    ]));
+    return t;
+  };
+  card.appendChild(nine(0,'Out'));
+  card.appendChild(nine(9,'In'));
+
+  if(par){
+    const counts = {eagle:0, birdie:0, par:0, bogey:0, double:0};
+    holes.forEach((h,i)=>{ if(!h) return; const d = h-par[i]; if(d<=-2) counts.eagle++; else if(d===-1) counts.birdie++; else if(d===0) counts.par++; else if(d===1) counts.bogey++; else counts.double++; });
+    const legend = [['sc-eagle','Eagle or better',counts.eagle],['sc-birdie','Birdie',counts.birdie],['','Par',counts.par],['sc-bogey','Bogey',counts.bogey],['sc-double','Double bogey +',counts.double]];
+    card.appendChild(el('div',{style:'display:flex;flex-wrap:wrap;gap:10px 16px;font-size:13px;'}, legend.map(([cls,label,n])=>
+      el('div',{style:'display:flex;align-items:center;gap:6px;'},[el('span',{class:'sc-mark '+cls,style:'width:19px;height:19px;font-size:11px;'}, String(n)), label])
+    )));
+  } else {
+    card.appendChild(el('div',{class:'small-note'},'No par saved for this course yet — add the card in the Courses tab to see birdies and bogeys marked.'));
+  }
   app.appendChild(card);
 }
 
