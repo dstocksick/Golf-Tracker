@@ -73,9 +73,11 @@ Finished round = `complete !== false` (old rounds have `complete: true`). `curre
 ## Data model (Firestore `rounds` documents)
 
 ```
-{ date, course, playerIds: [pid], roundPlayers: [{id, name}], complete: bool,
+{ date, course, playerIds: [pid], roundPlayers: [{id, name}], complete: bool, trip?: string,
   scores: { [pid]: { gross, dots, greenies, holes?: [18 numbers], team?: 1-4 } } }
 ```
+
+`trip` is a free-text tag for grouping rounds (the four 2026 trip rounds are `"Lake 2026"`). Claude adds it directly in Firestore; the app doesn't read it yet, and saving a round from the app's Edit screen (whole-document `saveRound`) drops it, so re-tag after app edits.
 
 **`courses` documents** — id is `courseKey(name)` (lowercase, non-alphanumerics → `-`, e.g. `old-kinderhook`):
 
